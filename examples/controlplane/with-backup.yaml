@@ -1,0 +1,41 @@
+# Pre-requisite: create the UXP license secret on the management cluster
+# in the crossplane-system namespace. Either of these works:
+#   up uxp license apply <path-to-license.json>          # key=license.json
+#   kubectl create secret generic uxp-license \           # key=license.json
+#     --from-file=license.json=<path-to-license.json> \
+#     -n crossplane-system
+# The composition reads the license.json key directly via bracket-notation
+# field path; no manual re-keying needed.
+#
+# The backup.location is the GCS bucket name. Bucket names are globally unique
+# across all of GCS: 3–63 characters, lowercase letters, digits, hyphens,
+# underscores, and dots; must start and end with a letter or digit.
+apiVersion: gcp.platform.upbound.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: prod-control-plane
+spec:
+  parameters:
+    id: prod-control-plane
+    location: us-central1
+    project: crossplane-playground
+    version: "1.34"
+    nodes:
+      count: 3
+      machineType: e2-standard-4
+    backup:
+      enabled: "yes"
+      location: prodcpbackup001
+      schedule: "0 */2 * * *"
+    knative:
+      enabled: "yes"
+    providerVerticalPodAutoscaling:
+      enabled: "yes"
+      minCpu: "100m"
+      maxCpu: "2"
+      minMemory: "100Mi"
+      maxMemory: "4000Mi"
+    license:
+      secretRef:
+        name: uxp-license
+        namespace: crossplane-system

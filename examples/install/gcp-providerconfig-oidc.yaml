@@ -1,0 +1,31 @@
+# GCP ProviderConfig using GKE Workload Identity on the upper (management)
+# cluster. Use this when the management cluster itself runs on GKE with
+# Workload Identity enabled and the provider pods' KSA is bound to a Google
+# ServiceAccount.
+#
+# Prerequisites:
+#   1. The management GKE cluster has workloadIdentityConfig.workloadPool set
+#      (<project>.svc.id.goog) and the node pool runs with
+#      workloadMetadataConfig.mode=GKE_METADATA.
+#   2. A Google ServiceAccount granted the roles the providers need (see
+#      README "Required GCP permissions").
+#   3. An IAM binding granting roles/iam.workloadIdentityUser on that GSA to
+#      the provider pods' Kubernetes ServiceAccount, e.g.
+#        serviceAccount:<project>.svc.id.goog[upbound-system/provider-gcp-*]
+#   4. The provider pods' KSA annotated with
+#        iam.gke.io/gcp-service-account: <gsa-email>
+#
+# With InjectedIdentity the provider obtains credentials from the GKE metadata
+# server — no secret and no impersonation config needed.
+#
+# Note: this is NOT for the GKE cluster created by this configuration (that
+# cluster is the workload cluster — UXP runs on the upper cluster). Use this
+# manifest on the upper management cluster.
+apiVersion: gcp.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  projectID: crossplane-playground
+  credentials:
+    source: InjectedIdentity

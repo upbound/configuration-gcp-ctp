@@ -1,0 +1,30 @@
+# GCP ProviderConfig using Upbound's federated-identity broker (OIDC).
+# This is the recommended option for control planes hosted in Upbound Cloud
+# Spaces: no long-lived keys, credentials are short-lived OIDC tokens minted
+# by Upbound and exchanged for GCP access tokens via Workload Identity
+# Federation.
+#
+# Prerequisites in GCP (one-time setup per Upbound org):
+#   1. Create a Workload Identity Pool and an OIDC Provider in the pool whose
+#        issuer  = https://proidc.upbound.io   (Upbound's OIDC issuer)
+#        allowed audiences / attribute mapping per Upbound docs.
+#   2. Create (or reuse) a Google ServiceAccount and grant it the roles it
+#      needs (roles/owner on the project, or a narrower set — see README).
+#   3. Grant the federated principal roles/iam.workloadIdentityUser on that
+#      Google ServiceAccount.
+#   4. Note the project ID and the service-account email — they go in this
+#      manifest.
+#
+# Documentation:
+#   https://docs.upbound.io/concepts/control-planes/configuration/managed-identities/
+apiVersion: gcp.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  projectID: crossplane-playground
+  credentials:
+    source: Upbound
+    # The Google ServiceAccount the Upbound OIDC token is exchanged for.
+    impersonateServiceAccount:
+      name: REPLACE-WITH-SA-EMAIL@crossplane-playground.iam.gserviceaccount.com

@@ -1,0 +1,66 @@
+# E2E test: GCP ControlPlane with backup + enterprise license.
+# Spins up a real GKE cluster via the configuration-gcp-ctp composition,
+# installs UXP, wires GKE Workload Identity backup, and applies an enterprise
+# license.
+# Requires:
+#   - A GCP ClusterProviderConfig named "default" with valid credentials
+#     (created automatically from initResources, but the referenced Secret
+#     "gcp-creds" in crossplane-system must already exist on the test
+#     control plane with key "credentials" containing the GCP service-account
+#     key JSON). The service account needs roles/owner (or editor +
+#     iam.serviceAccountAdmin + resourcemanager.projectIamAdmin).
+#   - A Secret named "uxp-license" in namespace "default" whose key
+#     "license.json" contains the UXP license JSON.
+#   - Sufficient GCP quota for one e2-standard-2 two-node GKE cluster
+#     in us-central1, and a globally-unique GCS bucket name.
+#   - The project ID below replaced with a real project.
+#
+# Expected runtime: 25-45 minutes (GKE provisioning + UXP install + Workload
+# Identity wiring).
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: E2ETest
+metadata:
+  name: controlplane-with-backup-and-license
+spec:
+  crossplane:
+    autoUpgrade:
+      channel: Stable
+  defaultConditions:
+  - Ready
+  timeoutSeconds: 3600
+  cleanupTimeoutSeconds: 1200
+  initResources:
+  - apiVersion: gcp.m.upbound.io/v1beta1
+    kind: ClusterProviderConfig
+    metadata:
+      name: default
+    spec:
+      projectID: crossplane-playground
+      credentials:
+        source: Secret
+        secretRef:
+          namespace: crossplane-system
+          name: gcp-creds
+          key: credentials
+  manifests:
+  - apiVersion: gcp.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: e2e-test-cp
+    spec:
+      parameters:
+        id: e2etestcp
+        location: us-central1
+        project: crossplane-playground
+        version: "1.34"
+        nodes:
+          count: 2
+          machineType: e2-standard-2
+        backup:
+          enabled: "yes"
+          location: e2etestcpbackup
+        license:
+          secretRef:
+            name: uxp-license
+            namespace: default
+  skipDelete: false

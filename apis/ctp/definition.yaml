@@ -1,0 +1,285 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: controlplanes.gcp.platform.upbound.io
+spec:
+  group: gcp.platform.upbound.io
+  names:
+    categories:
+    - crossplane
+    kind: ControlPlane
+    plural: controlplanes
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        description: ControlPlane is the Schema for creating GCP GKE clusters configured as Upbound control planes with optional UXP backup.
+        properties:
+          spec:
+            description: ControlPlaneSpec defines the desired state of ControlPlane.
+            properties:
+              parameters:
+                type: object
+                description: ControlPlane configuration parameters.
+                properties:
+                  id:
+                    type: string
+                    description: ID of this ControlPlane that other objects will use to refer to it.
+                  location:
+                    type: string
+                    description: GCP region (or zone) where the resources will be created (e.g. "us-central1", "europe-west1"). A region creates a regional GKE cluster.
+                  project:
+                    type: string
+                    description: >-
+                      GCP project ID in which to create all resources (Network,
+                      Subnetwork, GKE cluster, GCS bucket, IAM service account).
+                      GCP has no ResourceGroup equivalent — every resource is
+                      scoped to this project.
+                  providerConfigName:
+                    description: Crossplane ProviderConfig to use for provisioning these resources.
+                    type: string
+                    default: default
+                  version:
+                    description: >-
+                      Kubernetes (GKE) version for the cluster, used as the
+                      cluster's minMasterVersion. GKE picks the latest available
+                      patch for the given minor. Available versions vary by
+                      region and release channel — run
+                      `gcloud container get-server-config --region <loc>` to
+                      check what's currently offered before pinning.
+                    type: string
+                    enum:
+                    - "1.35"
+                    - "1.34"
+                    - "1.33"
+                    - "1.32"
+                    default: "1.34"
+                  nodes:
+                    type: object
+                    description: GKE node pool configuration parameters.
+                    properties:
+                      count:
+                        type: integer
+                        description: Desired node count, from 1 to 100.
+                      machineType:
+                        type: string
+                        description: GCE machine type for the GKE node pool (e.g. "e2-standard-2").
+                        default: e2-standard-2
+                    required:
+                    - count
+                    - machineType
+                  uxp:
+                    type: object
+                    description: UXP installation configuration.
+                    properties:
+                      version:
+                        type: string
+                        description: UXP Helm chart version to install (e.g. 2.2.1-up.1).
+                        default: "2.2.1-up.1"
+                    default:
+                      version: "2.2.1-up.1"
+                  backup:
+                    type: object
+                    description: UXP backup configuration using GKE Workload Identity.
+                    properties:
+                      enabled:
+                        type: string
+                        description: Enable UXP backup for this control plane ("yes" or "no").
+                        default: "no"
+                        enum: ["yes", "no"]
+                      location:
+                        type: string
+                        description: >-
+                          GCS bucket name for backup storage. The bucket is
+                          created if missing and never deleted by Crossplane.
+                          Bucket names are globally unique (3–63 chars, lowercase
+                          letters, digits, hyphens, underscores, and dots).
+                        pattern: '^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$'
+                      schedule:
+                        type: string
+                        description: >-
+                          Backup schedule. Accepts named shortcuts (@hourly, @daily, @weekly),
+                          standard 5-field cron expressions (e.g. "0 0/4 * * *", "0/15 * * * 1-5"),
+                          or duration intervals (e.g. "@every 1h30m10s"). When set, a BackupSchedule
+                          resource is created on the control plane's GKE cluster.
+                      installFrom:
+                        type: object
+                        description: >-
+                          Restore UXP state from an existing backup during initial provisioning.
+                          Applied once at bootstrap — ignored on subsequent reconciles.
+                          Use this when changing node machine types: provision a new ControlPlane
+                          with the desired machineType and set installFrom to restore state from
+                          the existing control plane's backup.
+                        properties:
+                          location:
+                            type: string
+                            description: GCS bucket name containing the source backup.
+                            pattern: '^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$'
+                          name:
+                            type: string
+                            description: Name of the backup to restore from (e.g. "my-backup-002").
+                        required:
+                        - location
+                        - name
+                  license:
+                    type: object
+                    description: UXP enterprise license configuration. When set, provisions a license on the control plane's UXP instance.
+                    properties:
+                      secretRef:
+                        type: object
+                        description: Reference to a Secret on the management cluster containing the UXP license JSON under the key "license.json".
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the secret containing the UXP license JSON.
+                          namespace:
+                            type: string
+                            description: Namespace of the secret.
+                            default: default
+                        required:
+                        - name
+                    required:
+                    - secretRef
+                  providerVerticalPodAutoscaling:
+                    type: object
+                    description: >-
+                      Enable Vertical Pod Autoscaling for UXP providers. Requires Metrics Server
+                      and VPA v1.4+ pre-installed on the GKE cluster. Needs a Standard or higher license.
+                    properties:
+                      enabled:
+                        type: string
+                        description: Enable provider VPA ("yes" or "no").
+                        default: "no"
+                        enum: ["yes", "no"]
+                      minCpu:
+                        type: string
+                        description: Minimum CPU allowed for provider containers (e.g. "100m").
+                      maxCpu:
+                        type: string
+                        description: Maximum CPU allowed for provider containers (e.g. "2").
+                      minMemory:
+                        type: string
+                        description: Minimum memory allowed for provider containers (e.g. "100Mi").
+                      maxMemory:
+                        type: string
+                        description: Maximum memory allowed for provider containers (e.g. "4000Mi").
+                  knative:
+                    type: object
+                    description: >-
+                      Enable Knative scale-to-zero for UXP functions. When enabled, cert-manager and
+                      Knative Serving are installed automatically on the GKE cluster. Needs a Standard or higher license.
+                    properties:
+                      enabled:
+                        type: string
+                        description: Enable Knative function runtime ("yes" or "no").
+                        default: "no"
+                        enum: ["yes", "no"]
+                  managementPolicies:
+                    description: ManagementPolicies for resources. Defaults to ["*"] which includes all operations.
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - "*"
+                        - Create
+                        - Observe
+                        - Update
+                        - Delete
+                        - LateInitialize
+                    default:
+                    - "*"
+                required:
+                - id
+                - location
+                - project
+                - nodes
+            required:
+            - parameters
+            type: object
+          status:
+            description: A Status represents the observed state.
+            properties:
+              controlplane:
+                description: Status information for the control plane.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+                properties:
+                  created:
+                    description: Creation timestamp of this ControlPlane resource (RFC 3339).
+                    type: string
+                  uxp:
+                    description: UXP installation status on the GKE cluster.
+                    type: object
+                    properties:
+                      version:
+                        description: UXP Helm chart version deployed on this control plane.
+                        type: string
+                      ready:
+                        description: True when the UXP Helm Release is Ready (all UXP pods running).
+                        type: boolean
+                  backup:
+                    description: Backup status — populated once the GKE cluster is ready and backup is enabled.
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether backup is enabled for this control plane.
+                        type: string
+                      bucketRef:
+                        description: GCS bucket name configured as the backup destination.
+                        type: string
+                      serviceAccountEmail:
+                        description: Email of the Google ServiceAccount created for the UXP backup controller.
+                        type: string
+                      lastBackupTime:
+                        description: Timestamp of the most recent scheduled backup run, sourced from BackupSchedule status.
+                        type: string
+                  resources:
+                    description: Managed resource health summary across all composed resources.
+                    type: object
+                    properties:
+                      total:
+                        description: Total number of composed managed resources.
+                        type: integer
+                      synced:
+                        description: Number of composed resources with Synced=True.
+                        type: integer
+                      ready:
+                        description: Number of composed resources with Ready=True.
+                        type: integer
+                      syncedAndReady:
+                        description: Number of composed resources with both Synced=True and Ready=True.
+                        type: integer
+                  knative:
+                    description: Knative feature status.
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether Knative function runtime is enabled.
+                        type: string
+                  providerVerticalPodAutoscaling:
+                    description: Provider VPA feature status.
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether provider Vertical Pod Autoscaling is enabled.
+                        type: string
+                  nodes:
+                    description: Node pool status.
+                    type: object
+                    properties:
+                      machineType:
+                        description: Desired GCE machine type for GKE worker nodes.
+                        type: string
+                      currentMachineType:
+                        description: >-
+                          Currently running machine type observed from GCP. Differs
+                          from machineType when a change was attempted — see the
+                          NodePoolMachineTypeImmutable condition for remediation guidance.
+                        type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true

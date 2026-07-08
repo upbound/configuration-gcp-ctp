@@ -1,0 +1,52 @@
+apiVersion: meta.dev.upbound.io/v2alpha1
+kind: Project
+metadata:
+  name: configuration-gcp-ctp
+spec:
+  dependsOn:
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/upbound/provider-family-gcp
+    version: '>=v2.0.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/upbound/provider-gcp-compute
+    version: '>=v2.0.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/upbound/provider-gcp-container
+    version: '>=v2.0.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/upbound/provider-gcp-cloudplatform
+    version: '>=v2.0.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/upbound/provider-gcp-storage
+    version: '>=v2.0.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/crossplane-contrib/provider-helm
+    version: '>=v1.0.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/crossplane-contrib/provider-kubernetes
+    version: '>=v1.0.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Function
+    package: xpkg.upbound.io/crossplane-contrib/function-extra-resources
+    version: v0.3.0
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Function
+    package: xpkg.upbound.io/crossplane-contrib/function-auto-ready
+    version: v0.6.4
+  description: GCP GKE Control Plane configuration with optional UXP backup support
+    using GKE Workload Identity (IAM ServiceAccount bound to the UXP controller KSA).
+  license: Apache-2.0
+  maintainer: Upbound <support@upbound.io>
+  readme: |
+    This configuration creates GCP GKE clusters configured as Upbound control planes with optional
+    UXP backup configuration using GKE Workload Identity. Implemented with a Python composition
+    function. Ported from configuration-azure-ctp (the most advanced, least buggy sibling).
+  repository: xpkg.upbound.io/upbound/configuration-gcp-ctp
+  source: github.com/UpboundCare/upbound
