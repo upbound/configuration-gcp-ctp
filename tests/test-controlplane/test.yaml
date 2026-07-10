@@ -127,7 +127,7 @@ spec:
         manifest:
           spec:
             objectStorage:
-              provider: GCS
+              provider: GCP
               bucket: mybackup001
               credentials:
                 source: InjectedIdentity
@@ -428,9 +428,8 @@ spec:
     kind: ServiceAccount
     metadata:
       name: test-cp-backup-identity
-    spec:
-      forProvider:
-        accountId: test-cp-backup
+      annotations:
+        crossplane.io/external-name: test-cp-backup
   - apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
     kind: ServiceAccountIAMMember
     metadata:
@@ -712,5 +711,5 @@ spec:
         manifest:
           spec:
             objectStorage:
-              provider: GCS
+              provider: GCP
               bucket: newcpbackup

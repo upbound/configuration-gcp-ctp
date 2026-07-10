@@ -59,7 +59,6 @@ def add_workload_identity_resources(rsp, id_val, location, project,
         "spec": {
             "forProvider": {
                 "project": project,
-                "accountId": account_id,
                 "displayName": f"UXP backup identity for {id_val}"
             },
             "providerConfigRef": {
@@ -231,7 +230,7 @@ def add_workload_identity_resources(rsp, id_val, location, project,
                                     "name": restore_name
                                 },
                                 "backupLocation": {
-                                    "provider": "GCS",
+                                    "provider": "GCP",
                                     "bucket": src_bucket,
                                     "credentials": {
                                         "source": "InjectedIdentity"
