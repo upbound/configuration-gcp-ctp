@@ -26,26 +26,30 @@ spec:
           count: 2
           machineType: e2-standard-2
   assertResources:
-  - apiVersion: compute.gcp.m.upbound.io/v1beta1
+  - apiVersion: gcp.platform.upbound.io/v1alpha1
     kind: Network
     metadata:
       name: test-cp
-  - apiVersion: compute.gcp.m.upbound.io/v1beta1
-    kind: Subnetwork
-    metadata:
-      name: test-cp-gke
-  - apiVersion: container.gcp.m.upbound.io/v1beta2
-    kind: Cluster
+    spec:
+      parameters:
+        id: test-cp
+        region: us-central1
+        providerConfigName: default
+  - apiVersion: gcp.platform.upbound.io/v1alpha1
+    kind: GKE
     metadata:
       name: test-cp
-  - apiVersion: container.gcp.m.upbound.io/v1beta2
-    kind: NodePool
-    metadata:
-      name: test-cp-nodes
     spec:
-      forProvider:
-        nodeConfig:
-          machineType: e2-standard-2
+      parameters:
+        id: test-cp
+        project: my-project
+        region: us-central1
+        version: "1.34"
+        workloadIdentity:
+          enabled: true
+        nodes:
+          count: 2
+          instanceType: e2-standard-2
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
@@ -64,21 +68,21 @@ spec:
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
-      name: test-cp-usage-release-cluster
+      name: test-cp-usage-release-gke
     spec:
       of:
-        kind: Cluster
+        kind: GKE
       by:
         kind: Release
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
-      name: test-cp-usage-subnetwork-network
+      name: test-cp-usage-gke-network
     spec:
       of:
         kind: Network
       by:
-        kind: Subnetwork
+        kind: GKE
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
@@ -206,12 +210,12 @@ spec:
           count: 2
           machineType: e2-standard-2
   assertResources:
-  - apiVersion: compute.gcp.m.upbound.io/v1beta1
+  - apiVersion: gcp.platform.upbound.io/v1alpha1
     kind: Network
     metadata:
       name: test-cp
-  - apiVersion: container.gcp.m.upbound.io/v1beta2
-    kind: Cluster
+  - apiVersion: gcp.platform.upbound.io/v1alpha1
+    kind: GKE
     metadata:
       name: test-cp
   - apiVersion: helm.m.crossplane.io/v1beta1

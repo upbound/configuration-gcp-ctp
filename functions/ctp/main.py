@@ -5,8 +5,8 @@ Ported from configuration-azure-ctp (the most advanced, least buggy sibling).
 Each section below is implemented in a sibling module:
 
   prelude.py            (00) shared extractors and helpers
-  network.py            (01) VPC Network + Subnetwork
-  gke.py                (02) GKE Cluster + worker NodePool + Helm/Kubernetes ProviderConfigs
+  network.py            (01) Network XR (configuration-gcp-network)
+  gke.py                (02) GKE XR (configuration-gcp-gke)
   uxp.py                (03) UXP v2 Helm Release
   usages.py             (04) deletion-order Usage guards
   backup.py             (05) GCS Bucket, BackupConfig, RBAC, Schedule
@@ -19,9 +19,9 @@ Each section below is implemented in a sibling module:
   status.py             (99) XR status writeback + ClaimConditions
 
 GKE Workload Identity needs no OIDC-issuer read (the workload pool is the
-deterministic <project>.svc.id.goog), so there is no observe-only cluster and
-no nodepool-observe module — the worker NodePool is a managed resource whose
-machineType is read directly from observed state for drift surfacing.
+deterministic <project>.svc.id.goog). Cluster metadata (running node
+instanceType) is read from the composed GKE XR's status.gke, so no observe-only
+managed resources are composed here.
 """
 
 from datetime import datetime, timezone
@@ -119,7 +119,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         ng_actual_machine_type != nodes.get("machineType", "")
 
     # --- Compose resources ---
-    add_network_resources(rsp, id_val, location, project, provider_config,
+    add_network_resources(rsp, id_val, location, provider_config,
                           mgmt_policies, config)
     add_gke_resources(rsp, id_val, location, project, provider_config, version,
                       nodes, mgmt_policies, config)

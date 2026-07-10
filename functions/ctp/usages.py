@@ -1,13 +1,10 @@
 """04-usages — deletion-order Usage guards.
 
-The UXP Helm Release must finish uninstalling and the worker NodePool must be
-gone before the GKE cluster is deleted, and the cluster must be gone before
-the Subnetwork / Network are removed.
-
-Ported from configuration-azure-ctp/usages.py. GCP has no ResourceGroup, so
-the chain ends at the Network rather than a ResourceGroup, and there is an
-extra NodePool→Cluster guard because GKE models the worker pool as a separate
-managed resource (AKS used an inline default node pool).
+The UXP Helm Release must finish uninstalling before the GKE cluster is
+deleted, and the GKE cluster must be gone before the network (VPC/Subnetwork,
+owned by the composed Network XR) is removed. Mirrors configuration-aws-ctp /
+-azure-ctp: guards target the composed GKE + Network XRs, not the underlying
+managed resources (which the lower configs own).
 """
 
 from crossplane.function import resource
@@ -16,20 +13,20 @@ from .prelude import stamp
 
 
 def add_usage_resources(rsp, id_val, config):
-    usage_release_cluster = {
+    usage_release_gke = {
         "apiVersion": "protection.crossplane.io/v1beta1",
         "kind": "Usage",
         "metadata": {
-            "name": f"{id_val}-usage-release-cluster",
+            "name": f"{id_val}-usage-release-gke",
             "namespace": "default",
             "annotations": {
-                "crossplane.io/composition-resource-name": "usage-release-cluster"
+                "crossplane.io/composition-resource-name": "usage-release-gke"
             }
         },
         "spec": {
             "of": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
-                "kind": "Cluster",
+                "apiVersion": "gcp.platform.upbound.io/v1alpha1",
+                "kind": "GKE",
                 "resourceRef": {
                     "name": id_val,
                     "namespace": "default"
@@ -47,81 +44,19 @@ def add_usage_resources(rsp, id_val, config):
         }
     }
 
-    usage_nodepool_cluster = {
+    usage_gke_network = {
         "apiVersion": "protection.crossplane.io/v1beta1",
         "kind": "Usage",
         "metadata": {
-            "name": f"{id_val}-usage-nodepool-cluster",
+            "name": f"{id_val}-usage-gke-network",
             "namespace": "default",
             "annotations": {
-                "crossplane.io/composition-resource-name": "usage-nodepool-cluster"
+                "crossplane.io/composition-resource-name": "usage-gke-network"
             }
         },
         "spec": {
             "of": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
-                "kind": "Cluster",
-                "resourceRef": {
-                    "name": id_val,
-                    "namespace": "default"
-                }
-            },
-            "by": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
-                "kind": "NodePool",
-                "resourceRef": {
-                    "name": f"{id_val}-nodes"
-                }
-            },
-            "reason": "Worker NodePool must be deleted before the GKE cluster is deleted",
-            "replayDeletion": True
-        }
-    }
-
-    usage_cluster_subnetwork = {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "metadata": {
-            "name": f"{id_val}-usage-cluster-subnetwork",
-            "namespace": "default",
-            "annotations": {
-                "crossplane.io/composition-resource-name": "usage-cluster-subnetwork"
-            }
-        },
-        "spec": {
-            "of": {
-                "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
-                "kind": "Subnetwork",
-                "resourceRef": {
-                    "name": f"{id_val}-gke",
-                    "namespace": "default"
-                }
-            },
-            "by": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
-                "kind": "Cluster",
-                "resourceRef": {
-                    "name": id_val
-                }
-            },
-            "reason": "GKE cluster must be fully deleted before the subnetwork is removed",
-            "replayDeletion": True
-        }
-    }
-
-    usage_subnetwork_network = {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "metadata": {
-            "name": f"{id_val}-usage-subnetwork-network",
-            "namespace": "default",
-            "annotations": {
-                "crossplane.io/composition-resource-name": "usage-subnetwork-network"
-            }
-        },
-        "spec": {
-            "of": {
-                "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+                "apiVersion": "gcp.platform.upbound.io/v1alpha1",
                 "kind": "Network",
                 "resourceRef": {
                     "name": id_val,
@@ -129,26 +64,18 @@ def add_usage_resources(rsp, id_val, config):
                 }
             },
             "by": {
-                "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
-                "kind": "Subnetwork",
+                "apiVersion": "gcp.platform.upbound.io/v1alpha1",
+                "kind": "GKE",
                 "resourceRef": {
-                    "name": f"{id_val}-gke"
+                    "name": id_val
                 }
             },
-            "reason": "Subnetwork must be fully deleted before the network is removed",
+            "reason": "GKE cluster must be fully deleted before the network is removed",
             "replayDeletion": True
         }
     }
 
-    usages = (
-        usage_release_cluster,
-        usage_nodepool_cluster,
-        usage_cluster_subnetwork,
-        usage_subnetwork_network,
-    )
-    for usage in usages:
+    for usage in (usage_release_gke, usage_gke_network):
         stamp(usage, config)
-    resource.update(rsp.desired.resources["usage-release-cluster"], usage_release_cluster)
-    resource.update(rsp.desired.resources["usage-nodepool-cluster"], usage_nodepool_cluster)
-    resource.update(rsp.desired.resources["usage-cluster-subnetwork"], usage_cluster_subnetwork)
-    resource.update(rsp.desired.resources["usage-subnetwork-network"], usage_subnetwork_network)
+    resource.update(rsp.desired.resources["usage-release-gke"], usage_release_gke)
+    resource.update(rsp.desired.resources["usage-gke-network"], usage_gke_network)
