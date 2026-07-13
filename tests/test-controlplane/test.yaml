@@ -436,6 +436,7 @@ spec:
       name: test-cp-backup-wi-binding
     spec:
       forProvider:
+        serviceAccountId: projects/my-project/serviceAccounts/test-cp-backup@my-project.iam.gserviceaccount.com
         role: roles/iam.workloadIdentityUser
         member: serviceAccount:my-project.svc.id.goog[crossplane-system/upbound-controller-manager]
   - apiVersion: storage.gcp.m.upbound.io/v1beta1

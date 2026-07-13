@@ -85,9 +85,11 @@ def add_workload_identity_resources(rsp, id_val, location, project,
         },
         "spec": {
             "forProvider": {
-                "serviceAccountIdRef": {
-                    "name": f"{id_val}-backup-identity"
-                },
+                # serviceAccountId is required by the CRD; a ref alone fails
+                # admission before it can resolve, so set the deterministic path.
+                # (The GSA is created above; this binding self-heals on retry
+                # once GCP has propagated it, like the BucketIAMMember.)
+                "serviceAccountId": f"projects/{project}/serviceAccounts/{sa_email}",
                 "role": "roles/iam.workloadIdentityUser",
                 "member": workload_identity_member(
                     project, CONTROLLER_NAMESPACE, CONTROLLER_KSA
