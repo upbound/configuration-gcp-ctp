@@ -15,7 +15,7 @@ Ported from configuration-azure-ctp/backup.py. GCP-specific differences:
 * There is NO observe-only cluster here: GKE Workload Identity is wired from
   the deterministic workload pool `<project>.svc.id.goog`, so no OIDC issuer
   needs to be read back from the cluster (Azure read oidcIssuerUrl).
-* The BackupConfig's objectStorage.provider is "GCS"; with Workload Identity
+* The BackupConfig's objectStorage.provider is "GCP"; with Workload Identity
   the backup controller uses ambient credentials (InjectedIdentity), so no
   per-account `config` block is required (Azure needed config.storage_account).
 """
@@ -81,7 +81,7 @@ def add_backup_resources(rsp, id_val, location, project, provider_config,
                     },
                     "spec": {
                         "objectStorage": {
-                            "provider": "GCS",
+                            "provider": "GCP",
                             "bucket": bucket_name,
                             "credentials": {
                                 "source": "InjectedIdentity"

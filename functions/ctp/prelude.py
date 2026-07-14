@@ -110,14 +110,15 @@ def get_workload_identity_sa_email(observed: Dict) -> str:
 
 
 def get_cluster_name(id_val: str, observed: Dict) -> str:
-    """Return the actual GKE cluster name from the observed managed resource;
-    fall back to id_val before the resource is created."""
-    cluster = observed.get("gke-cluster")
-    if not cluster:
+    """Return the GKE cluster name from the composed GKE XR's
+    status.gke.clusterName, or id_val until the XR surfaces it
+    (configuration-gcp-gke v2.0.3+)."""
+    obs = observed.get("gke")
+    if not obs:
         return id_val
 
-    res = cluster.resource if hasattr(cluster, "resource") else cluster
-    return res.get("metadata", {}).get("name", id_val) or id_val
+    res = obs.resource if hasattr(obs, "resource") else obs
+    return res.get("status", {}).get("gke", {}).get("clusterName", "") or id_val
 
 
 def is_release_deployed(observed: Dict, name: str) -> bool:
@@ -190,21 +191,12 @@ def parse_bucket_location(location: str) -> str:
 
 
 def get_nodepool_actual_machine_type(observed: Dict) -> str:
-    """Return the machineType reported by the managed GKE NodePool, or "" when
-    it has not yet synced.
-
-    upjet surfaces node config under status.atProvider.nodeConfig, which may be
-    serialized as either a single object or a single-element list depending on
-    the provider version — handle both.
-    """
-    obs = observed.get("gke-nodepool")
+    """Return the running node instanceType from the composed GKE XR's
+    status.gke.nodePool.instanceType, or "" until the XR surfaces it
+    (configuration-gcp-gke v2.0.3+)."""
+    obs = observed.get("gke")
     if not obs:
         return ""
 
     res = obs.resource if hasattr(obs, "resource") else obs
-    node_config = res.get("status", {}).get("atProvider", {}).get("nodeConfig")
-    if isinstance(node_config, list):
-        node_config = node_config[0] if node_config else {}
-    if isinstance(node_config, dict):
-        return node_config.get("machineType", "")
-    return ""
+    return res.get("status", {}).get("gke", {}).get("nodePool", {}).get("instanceType", "")
