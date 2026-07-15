@@ -89,8 +89,9 @@ plane.
 
 ### Upper (management) cluster: configure the GCP provider
 
-The management cluster running this package needs a GCP `ClusterProviderConfig`
-so the providers can authenticate. See `examples/install/` for three flavors:
+The management cluster running this package needs a GCP `ProviderConfig`
+(namespaced, in the `default` namespace) so the providers can authenticate.
+See `examples/install/` for three flavors:
 
 * `gcp-providerconfig-secret.yaml` — service-account key in a Secret (use this
   on local KIND / any cluster without a trusted OIDC issuer).
@@ -229,9 +230,9 @@ All require `spec.parameters.project` to be set to a real GCP project ID.
 * Composition tests: `up test run tests/test-controlplane`
 * E2E (real GCP): `up test run tests/e2etest-controlplane --e2e`
 
-The E2E test requires a working GCP ClusterProviderConfig named `default` with
-sufficient permissions to create networks, GKE clusters, service accounts, IAM
-bindings, and GCS buckets. 
+The E2E test requires a working GCP `ProviderConfig` named `default` (namespaced,
+in the `default` namespace) with sufficient permissions to create networks, GKE
+clusters, service accounts, IAM bindings, and GCS buckets.
 
 > Note: the composition tests are loose shape asserts — they verify field
 > names, not that apiVersions/field paths are correct against the live CRDs.

@@ -1,26 +1,33 @@
-# E2E test: GCP ControlPlane with backup + enterprise license.
+# E2E test: GCP ControlPlane with GKE Workload Identity backup.
 # Spins up a real GKE cluster via the configuration-gcp-ctp composition,
-# installs UXP, wires GKE Workload Identity backup, and applies an enterprise
-# license.
-# Requires:
-#   - A GCP ClusterProviderConfig named "default" with valid credentials
-#     (created automatically from initResources, but the referenced Secret
-#     "gcp-creds" in crossplane-system must already exist on the test
-#     control plane with key "credentials" containing the GCP service-account
-#     key JSON). The service account needs roles/owner (or editor +
-#     iam.serviceAccountAdmin + resourcemanager.projectIamAdmin).
-#   - A Secret named "uxp-license" in namespace "default" whose key
-#     "license.json" contains the UXP license JSON.
-#   - Sufficient GCP quota for one e2-standard-2 two-node GKE cluster
-#     in us-central1, and a globally-unique GCS bucket name.
-#   - The project ID below replaced with a real project.
+# installs UXP, and wires GCS backup via GKE Workload Identity.
 #
+# Credentials: the GCP ProviderConfig "default" (namespaced, in the "default"
+# namespace where the composed managed resources live) uses Upbound-injected
+# identity (source: Upbound) federated to the solutions e2e GCP service
+# account, so no pre-provisioned Secret is required on the ephemeral test
+# control plane.
+#
+# Backup is enabled but NO license is supplied, and that is sufficient here:
+# this test asserts only that the composition wires backup up and the
+# ControlPlane XR reaches Ready. The GCS Bucket, BackupConfig/BackupSchedule and
+# RBAC are provider-kubernetes Objects that go Ready once their manifests apply
+# (UXP installs the admin.uxp.upbound.io CRDs regardless of licensing).
+#
+# NOTE: actually EXECUTING a backup requires a UXP Standard-plan (or above)
+# license — https://docs.upbound.io/manuals/uxp/howtos/backup-and-restore/. This
+# test does not trigger or assert a real backup run, so it does not need one. To
+# cover an end-to-end backup, add a valid "uxp-license" Secret + `license` block
+# and assert on an actual backup.
+#
+# Requires sufficient GCP quota for one e2-standard-2 two-node GKE cluster in
+# us-central1, and a globally-unique GCS bucket name.
 # Expected runtime: 25-45 minutes (GKE provisioning + UXP install + Workload
 # Identity wiring).
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: E2ETest
 metadata:
-  name: controlplane-with-backup-and-license
+  name: controlplane-with-backup
 spec:
   crossplane:
     autoUpgrade:
@@ -29,19 +36,20 @@ spec:
   - Ready
   timeoutSeconds: 3600
   cleanupTimeoutSeconds: 1200
-  initResources:
+  extraResources:
   - apiVersion: gcp.m.upbound.io/v1beta1
-    kind: ClusterProviderConfig
+    kind: ProviderConfig
     metadata:
       name: default
+      namespace: default
     spec:
       projectID: crossplane-playground
       credentials:
-        source: Secret
-        secretRef:
-          namespace: crossplane-system
-          name: gcp-creds
-          key: credentials
+        source: Upbound
+        upbound:
+          federation:
+            providerID: projects/283222062215/locations/global/workloadIdentityPools/solutions-upbound-oidc-pool/providers/solutions-u5d-oidc-pool
+            serviceAccount: solutions-u5d-service-account@crossplane-playground.iam.gserviceaccount.com
   manifests:
   - apiVersion: gcp.platform.upbound.io/v1alpha1
     kind: ControlPlane
@@ -59,8 +67,4 @@ spec:
         backup:
           enabled: "yes"
           location: e2etestcpbackup
-        license:
-          secretRef:
-            name: uxp-license
-            namespace: default
   skipDelete: false

@@ -22,9 +22,10 @@
 # cluster is the workload cluster — UXP runs on the upper cluster). Use this
 # manifest on the upper management cluster.
 apiVersion: gcp.m.upbound.io/v1beta1
-kind: ClusterProviderConfig
+kind: ProviderConfig
 metadata:
   name: default
+  namespace: default
 spec:
   projectID: crossplane-playground
   credentials:
