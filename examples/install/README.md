@@ -10,10 +10,12 @@ credential flavors and apply it once before applying a `ControlPlane` XR.
 | `gcp-providerconfig-upbound.yaml`   | `Upbound` (OIDC)      | **Recommended** for Upbound Cloud Spaces control planes — federated, keyless. |
 | `gcp-providerconfig-oidc.yaml`      | `InjectedIdentity`    | Self-hosted UXP on a GKE management cluster with Workload Identity wired.    |
 
-All three install a `ClusterProviderConfig` named `default`, which matches the
-default `providerConfigName` on the `ControlPlane` XR. Override
-`spec.parameters.providerConfigName` on the XR to use a different name. Every
-flavor must set `spec.projectID` to the GCP project the providers act in.
+All three install a namespaced `ProviderConfig` named `default` in the
+`default` namespace, which matches the default `providerConfigName` on the
+`ControlPlane` XR and the `default` namespace the composed managed resources
+are placed in. Override `spec.parameters.providerConfigName` on the XR to use a
+different name. Every flavor must set `spec.projectID` to the GCP project the
+providers act in.
 
 ## Secret-based setup
 

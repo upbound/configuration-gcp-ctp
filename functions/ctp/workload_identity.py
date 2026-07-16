@@ -63,7 +63,7 @@ def add_workload_identity_resources(rsp, id_val, location, project,
             },
             "providerConfigRef": {
                 "name": provider_config,
-                "kind": "ClusterProviderConfig"
+                "kind": "ProviderConfig"
             }
         }
     }
@@ -97,7 +97,7 @@ def add_workload_identity_resources(rsp, id_val, location, project,
             },
             "providerConfigRef": {
                 "name": provider_config,
-                "kind": "ClusterProviderConfig"
+                "kind": "ProviderConfig"
             }
         }
     }
@@ -126,7 +126,7 @@ def add_workload_identity_resources(rsp, id_val, location, project,
             },
             "providerConfigRef": {
                 "name": provider_config,
-                "kind": "ClusterProviderConfig"
+                "kind": "ProviderConfig"
             }
         }
     }

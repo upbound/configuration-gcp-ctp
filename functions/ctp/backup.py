@@ -48,7 +48,7 @@ def add_backup_resources(rsp, id_val, location, project, provider_config,
             },
             "providerConfigRef": {
                 "name": provider_config,
-                "kind": "ClusterProviderConfig"
+                "kind": "ProviderConfig"
             }
         }
     }
