@@ -8,6 +8,7 @@ Each section below is implemented in a sibling module:
   network.py            (01) Network XR (configuration-gcp-network)
   gke.py                (02) GKE XR (configuration-gcp-gke)
   uxp.py                (03) UXP v2 Helm Release
+  k8gb.py               (04b) k8gb operator + CoreDNS producer
   usages.py             (04) deletion-order Usage guards
   backup.py             (05) GCS Bucket, BackupConfig, RBAC, Schedule
   workload_identity.py  (06) ServiceAccount, ServiceAccountIAMMember,
@@ -22,8 +23,9 @@ Each section below is implemented in a sibling module:
 
 GKE Workload Identity needs no OIDC-issuer read (the workload pool is the
 deterministic <project>.svc.id.goog). Cluster metadata (running node
-instanceType) is read from the composed GKE XR's status.gke, so no observe-only
-managed resources are composed here.
+instanceType) is read from the composed GKE XR's status.gke; the only
+observe-only resource composed here is the k8gb CoreDNS Service Object (to read
+its LoadBalancer endpoint for the status contract).
 """
 
 from datetime import datetime, timezone
@@ -35,6 +37,7 @@ from .backup import add_backup_resources
 from .certmanager import add_certmanager_resources
 from .gke import add_gke_resources
 from .ingress import add_ingress_resources
+from .k8gb import add_k8gb_resources
 from .knative import add_knative_resources
 from .licensing import add_license_resources
 from .network import add_network_resources
@@ -43,6 +46,8 @@ from .prelude import (
     backup_sa_email,
     build_manager_args,
     check_license_conflict,
+    derive_k8gb_ext_geo_tags,
+    derive_k8gb_geo_tag,
     get_nodepool_actual_machine_type,
     get_workload_identity_sa_email,
     is_knative_serving_ready,
@@ -96,6 +101,15 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     license_conflict = check_license_conflict(id_val, license_param, all_ctps)
 
+    # k8gb geo tags: this cluster's unique tag, plus same-cloud k8gb peers on
+    # the same dnsZone (cross-cloud peers are injected later by FleetGslb).
+    k8gb_geo_tag = ""
+    k8gb_ext_geo_tags = ""
+    if k8gb_enabled:
+        k8gb_geo_tag = derive_k8gb_geo_tag(k8gb, location, id_val)
+        k8gb_ext_geo_tags = derive_k8gb_ext_geo_tags(
+            id_val, k8gb.get("dnsZone", ""), k8gb_geo_tag, all_ctps)
+
     observed_resources = {
         name: resource.struct_to_dict(res.resource)
         for name, res in req.observed.resources.items()
@@ -112,6 +126,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     vpa_ready = is_release_deployed(observed_resources, "vpa-release")
     certmanager_ready = is_release_deployed(observed_resources, "certmanager-release")
     ingress_ready = is_release_deployed(observed_resources, "ingress-nginx-release")
+    k8gb_deployed = is_release_deployed(observed_resources, "k8gb-release")
     knative_op_ready = is_release_deployed(observed_resources, "knative-operator-release")
     knative_deps_ready = certmanager_ready and knative_op_ready
     knative_serving_ready = is_knative_serving_ready(observed_resources)
@@ -134,7 +149,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     add_gke_resources(rsp, id_val, location, project, provider_config, version,
                       nodes, mgmt_policies, config)
     add_uxp_release(rsp, id_val, uxp_version, uxp_deployed, mgr_args, config)
-    add_usage_resources(rsp, id_val, config)
+    add_usage_resources(rsp, id_val, config, k8gb_enabled=k8gb_enabled,
+                        argocd_enabled=argocd_enabled)
 
     # cert-manager is always installed (free component, no license gate) so the
     # k8gb/argocd add-ons can rely on it for Ingress TLS independently of knative.
@@ -144,6 +160,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # control planes do not pay for an idle cloud load balancer.
     if k8gb_enabled or argocd_enabled:
         add_ingress_resources(rsp, id_val, ingress_ready, config)
+
+    # k8gb producer — operator + CoreDNS exposed via a native GCP external LB.
+    if k8gb_enabled:
+        add_k8gb_resources(rsp, id_val, k8gb, k8gb_geo_tag, k8gb_ext_geo_tags,
+                           k8gb_deployed, config)
 
     if backup.get("enabled") == "yes":
         add_backup_resources(rsp, id_val, location, project, provider_config,
@@ -173,4 +194,4 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  sa_email, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_machine_type, ng_size_mismatch, vpa, knative,
-                 license_conflict, config)
+                 k8gb, k8gb_geo_tag, license_conflict, config)

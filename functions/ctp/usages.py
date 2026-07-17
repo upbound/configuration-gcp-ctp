@@ -1,10 +1,16 @@
 """04-usages — deletion-order Usage guards.
 
-The UXP Helm Release must finish uninstalling before the GKE cluster is
-deleted, and the GKE cluster must be gone before the network (VPC/Subnetwork,
-owned by the composed Network XR) is removed. Mirrors configuration-aws-ctp /
--azure-ctp: guards target the composed GKE + Network XRs, not the underlying
-managed resources (which the lower configs own).
+Base guards: the UXP Helm Release must finish uninstalling before the GKE
+cluster is deleted, and the GKE cluster must be gone before the network
+(VPC/Subnetwork, owned by the composed Network XR) is removed. Guards target the
+composed GKE + Network XRs, not the underlying managed resources (which the
+lower configs own).
+
+Add-on guards: every child-cluster Release/Object added by an add-on (k8gb,
+ArgoCD) also gets an `of: GKE, by: <resource>` guard, so it finishes
+uninstalling before the GKE cluster/kubeconfig is torn out from under it
+(otherwise the child Objects orphan-finalize). Emitted only when the add-on is
+enabled.
 """
 
 from crossplane.function import resource
@@ -12,7 +18,46 @@ from crossplane.function import resource
 from .prelude import stamp
 
 
-def add_usage_resources(rsp, id_val, config):
+def _emit_gke_usage(rsp, id_val, cr_name, by_api_version, by_kind, by_name,
+                    reason, config):
+    """Emit an `of: GKE, by: <resource>` Usage guarding a child-cluster
+    resource against premature GKE deletion."""
+    usage = {
+        "apiVersion": "protection.crossplane.io/v1beta1",
+        "kind": "Usage",
+        "metadata": {
+            "name": f"{id_val}-{cr_name}",
+            "namespace": "default",
+            "annotations": {
+                "crossplane.io/composition-resource-name": cr_name
+            }
+        },
+        "spec": {
+            "of": {
+                "apiVersion": "gcp.platform.upbound.io/v1alpha1",
+                "kind": "GKE",
+                "resourceRef": {
+                    "name": id_val,
+                    "namespace": "default"
+                }
+            },
+            "by": {
+                "apiVersion": by_api_version,
+                "kind": by_kind,
+                "resourceRef": {
+                    "name": by_name
+                }
+            },
+            "reason": reason,
+            "replayDeletion": True
+        }
+    }
+    stamp(usage, config)
+    resource.update(rsp.desired.resources[cr_name], usage)
+
+
+def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
+                        argocd_enabled=False):
     usage_release_gke = {
         "apiVersion": "protection.crossplane.io/v1beta1",
         "kind": "Usage",
@@ -79,3 +124,19 @@ def add_usage_resources(rsp, id_val, config):
         stamp(usage, config)
     resource.update(rsp.desired.resources["usage-release-gke"], usage_release_gke)
     resource.update(rsp.desired.resources["usage-gke-network"], usage_gke_network)
+
+    if k8gb_enabled:
+        _emit_gke_usage(
+            rsp, id_val, "usage-k8gb-gke",
+            "helm.m.crossplane.io/v1beta1", "Release",
+            f"{id_val}-k8gb",
+            "k8gb Release must finish uninstalling before the GKE cluster is deleted",
+            config)
+        # The observe-only CoreDNS Object also guards the GKE cluster so it does
+        # not orphan-finalize when the cluster/kubeconfig is torn out first.
+        _emit_gke_usage(
+            rsp, id_val, "usage-k8gb-coredns-gke",
+            "kubernetes.m.crossplane.io/v1alpha1", "Object",
+            f"{id_val}-k8gb-coredns",
+            "k8gb CoreDNS observe Object must be removed before the GKE cluster is deleted",
+            config)
