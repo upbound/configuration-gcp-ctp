@@ -15,6 +15,7 @@ Each section below is implemented in a sibling module:
   licensing.py          (07) License Secret + License CR
   vpa.py                (08) VPA Helm Release
   certmanager.py        (09a) always-on cert-manager Helm Release
+  ingress.py            (09b) nginx-ingress (when k8gb or argocd enabled)
   knative.py            (09) knative-operator + serving CR
   runtime_config.py     (10) UpboundRuntimeConfig (ProviderVPA + Knative caps)
   status.py             (99) XR status writeback + ClaimConditions
@@ -33,6 +34,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .backup import add_backup_resources
 from .certmanager import add_certmanager_resources
 from .gke import add_gke_resources
+from .ingress import add_ingress_resources
 from .knative import add_knative_resources
 from .licensing import add_license_resources
 from .network import add_network_resources
@@ -80,6 +82,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     uxp_version = params.get("uxp", {}).get("version", "2.2.1-up.1")
     vpa = params.get("providerVerticalPodAutoscaling")
     knative = params.get("knative")
+    k8gb = params.get("k8gb")
+    argocd = params.get("argocd")
+
+    k8gb_enabled = bool(k8gb) and k8gb.get("enabled") == "yes"
+    argocd_enabled = bool(argocd) and argocd.get("enabled") == "yes"
 
     # function-extra-resources delivers `allControlPlanes` via the
     # apiextensions.crossplane.io/extra-resources context key.
@@ -104,6 +111,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     uxp_deployed = is_release_deployed(observed_resources, "uxp-release")
     vpa_ready = is_release_deployed(observed_resources, "vpa-release")
     certmanager_ready = is_release_deployed(observed_resources, "certmanager-release")
+    ingress_ready = is_release_deployed(observed_resources, "ingress-nginx-release")
     knative_op_ready = is_release_deployed(observed_resources, "knative-operator-release")
     knative_deps_ready = certmanager_ready and knative_op_ready
     knative_serving_ready = is_knative_serving_ready(observed_resources)
@@ -131,6 +139,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # cert-manager is always installed (free component, no license gate) so the
     # k8gb/argocd add-ons can rely on it for Ingress TLS independently of knative.
     add_certmanager_resources(rsp, id_val, certmanager_ready, config)
+
+    # nginx-ingress is installed only when an add-on needs an Ingress, so plain
+    # control planes do not pay for an idle cloud load balancer.
+    if k8gb_enabled or argocd_enabled:
+        add_ingress_resources(rsp, id_val, ingress_ready, config)
 
     if backup.get("enabled") == "yes":
         add_backup_resources(rsp, id_val, location, project, provider_config,
