@@ -1,0 +1,27 @@
+# ControlPlane with the k8gb add-on enabled. Installs the k8gb operator and
+# CoreDNS exposed via a native GCP external LB (TCP+UDP:53), and pulls in
+# nginx-ingress + cert-manager. The XR surfaces
+# status.controlplane.k8gb.coreDNSEndpoint + delegationRecord for the fleet
+# aggregator (FleetGslb) to consume. See docs/ctp-addons-implementation-plan.md.
+#
+# The CoreDNS LB uses backend-service (RBS) load balancing for mixed-protocol
+# TCP+UDP:53 — requires GKE >= 1.26 (the "1.34" below satisfies it).
+apiVersion: gcp.platform.upbound.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: k8gb-control-plane
+spec:
+  parameters:
+    id: k8gb-control-plane
+    location: us-central1
+    project: my-project
+    version: "1.34"
+    nodes:
+      count: 3
+      machineType: e2-standard-2
+    k8gb:
+      enabled: "yes"
+      dnsZone: gslb.example.com
+      parentZone: example.com
+      strategy: failover
+      # clusterGeoTag defaults to gcp-<location>-<id> when omitted.

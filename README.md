@@ -3,8 +3,13 @@
 GCP analog of `configuration-azure-ctp` (the most advanced, least-buggy
 sibling in this family — this package was ported from it, not from AWS).
 Provisions a GCP GKE cluster configured as an Upbound control plane, installs
-UXP, and optionally wires backup (GCS), enterprise license, provider VPA, and
-Knative.
+UXP, and optionally wires backup (GCS), enterprise license, provider VPA,
+Knative, k8gb global failover, and ArgoCD. cert-manager is always installed.
+
+> **cert-manager** is installed unconditionally on every control plane (a free
+> dependency of Knative/k8gb/ArgoCD Ingress TLS). **nginx-ingress** is installed
+> only when `k8gb` or `argocd` is enabled, so plain control planes do not pay for
+> an idle cloud load balancer.
 
 Translation of Azure → GCP concepts:
 
@@ -222,13 +227,38 @@ See `examples/controlplane/`:
 * `basic.yaml` — minimal GKE control plane with UXP
 * `with-backup.yaml` — backup enabled, schedule, VPA, Knative, license
 * `uxp-ctp-1.yaml` — opinionated production-style example
+* `with-k8gb.yaml` — k8gb global failover (producer role) enabled
+* `with-argocd.yaml` — ArgoCD (GitOps app-of-apps) enabled
 
 All require `spec.parameters.project` to be set to a real GCP project ID.
+
+### k8gb (global failover)
+
+When `k8gb.enabled: "yes"`, the control plane becomes a **producer** in the fleet
+GSLB architecture (`configuration-aws-ctp/docs/gslb-dns-architecture.md`): it
+installs the k8gb operator and CoreDNS exposed through a native GCP external LB
+serving UDP+TCP:53, and surfaces `status.controlplane.k8gb.coreDNSEndpoint` +
+`delegationRecord` for the parent-side FleetGslb aggregator. Parameters:
+`dnsZone` (load-balanced zone), `parentZone`, `clusterGeoTag` (defaults to
+`gcp-<location>-<id>`), and `strategy` (`failover`/`roundRobin`/`geoip`). The
+CoreDNS LB uses backend-service (RBS) load balancing for mixed-protocol
+TCP+UDP:53 and requires GKE >= 1.26. No AWS-style LB controller is needed — GKE
+provisions the external LB natively. See `examples/controlplane/with-k8gb.yaml`.
+GSLB is not yet functional end-to-end — nothing writes the NS delegation until
+FleetGslb exists.
+
+### ArgoCD
+
+When `argocd.enabled: "yes"`, ArgoCD is installed with a UI Ingress
+(`argocd.hostname`, nginx + a self-signed cert-manager Certificate) and a root
+app-of-apps `Application` pointing at the public git repo `argocd.url`. See
+`examples/controlplane/with-argocd.yaml`.
 
 ## Testing
 
 * Composition tests: `up test run tests/test-controlplane`
 * E2E (real GCP): `up test run tests/e2etest-controlplane --e2e`
+* E2E add-ons (k8gb + ArgoCD, real GCP): `up test run tests/e2etest-addons --e2e`
 
 The E2E test requires a working GCP `ProviderConfig` named `default` (namespaced,
 in the `default` namespace) with sufficient permissions to create networks, GKE
