@@ -28,7 +28,7 @@ def add_usage_resources(rsp, id_val, config):
         },
         "spec": {
             "of": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
+                "apiVersion": "container.gcp.m.upbound.io/v1beta1",
                 "kind": "Cluster",
                 "resourceRef": {
                     "name": id_val,
@@ -59,7 +59,7 @@ def add_usage_resources(rsp, id_val, config):
         },
         "spec": {
             "of": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
+                "apiVersion": "container.gcp.m.upbound.io/v1beta1",
                 "kind": "Cluster",
                 "resourceRef": {
                     "name": id_val,
@@ -67,7 +67,7 @@ def add_usage_resources(rsp, id_val, config):
                 }
             },
             "by": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
+                "apiVersion": "container.gcp.m.upbound.io/v1beta1",
                 "kind": "NodePool",
                 "resourceRef": {
                     "name": f"{id_val}-nodes"
@@ -98,7 +98,7 @@ def add_usage_resources(rsp, id_val, config):
                 }
             },
             "by": {
-                "apiVersion": "container.gcp.m.upbound.io/v1beta2",
+                "apiVersion": "container.gcp.m.upbound.io/v1beta1",
                 "kind": "Cluster",
                 "resourceRef": {
                     "name": id_val

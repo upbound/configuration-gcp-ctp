@@ -54,7 +54,7 @@ introspect the installed CRDs). The following are the highest-risk areas to
 verify with `up project build` and a real E2E run before trusting them:
 
 * **v2 namespaced MR API groups/versions** — e.g.
-  `container.gcp.m.upbound.io/v1beta2` (Cluster, NodePool),
+  `container.gcp.m.upbound.io/v1beta1` (Cluster, NodePool),
   `compute.gcp.m.upbound.io/v1beta1` (Network, Subnetwork),
   `storage.gcp.m.upbound.io/v1beta1` (Bucket, BucketIAMMember),
   `cloudplatform.gcp.m.upbound.io/v1beta1` (ServiceAccount,

@@ -34,11 +34,11 @@ spec:
     kind: Subnetwork
     metadata:
       name: test-cp-gke
-  - apiVersion: container.gcp.m.upbound.io/v1beta2
+  - apiVersion: container.gcp.m.upbound.io/v1beta1
     kind: Cluster
     metadata:
       name: test-cp
-  - apiVersion: container.gcp.m.upbound.io/v1beta2
+  - apiVersion: container.gcp.m.upbound.io/v1beta1
     kind: NodePool
     metadata:
       name: test-cp-nodes
@@ -210,7 +210,7 @@ spec:
     kind: Network
     metadata:
       name: test-cp
-  - apiVersion: container.gcp.m.upbound.io/v1beta2
+  - apiVersion: container.gcp.m.upbound.io/v1beta1
     kind: Cluster
     metadata:
       name: test-cp

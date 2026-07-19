@@ -29,7 +29,7 @@ from .prelude import stamp, workload_identity_pool
 def add_gke_resources(rsp, id_val, location, project, provider_config, version,
                       nodes, mgmt_policies, config):
     cluster = {
-        "apiVersion": "container.gcp.m.upbound.io/v1beta2",
+        "apiVersion": "container.gcp.m.upbound.io/v1beta1",
         "kind": "Cluster",
         "metadata": {
             "name": id_val,
@@ -77,7 +77,7 @@ def add_gke_resources(rsp, id_val, location, project, provider_config, version,
     resource.update(rsp.desired.resources["gke-cluster"], cluster)
 
     nodepool = {
-        "apiVersion": "container.gcp.m.upbound.io/v1beta2",
+        "apiVersion": "container.gcp.m.upbound.io/v1beta1",
         "kind": "NodePool",
         "metadata": {
             "name": f"{id_val}-nodes",
