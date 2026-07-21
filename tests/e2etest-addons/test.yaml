@@ -1,8 +1,8 @@
 # E2E test: GCP ControlPlane with the k8gb + ArgoCD add-ons enabled.
 # Spins up a real GKE cluster via the configuration-gcp-ctp composition, installs
-# UXP, and then the full add-on stack: cert-manager (always-on), nginx-ingress,
+# UXP, and then the full add-on stack: cert-manager (always-on), the Envoy Gateway data plane,
 # k8gb (operator + CoreDNS exposed via a native GCP external LB), and ArgoCD
-# (UI Ingress + root app-of-apps).
+# (UI Gateway/HTTPRoute + root app-of-apps).
 #
 # Credentials: the GCP ProviderConfig "default" (namespaced, in the "default"
 # namespace) uses Upbound-injected identity federated to the solutions e2e GCP

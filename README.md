@@ -7,9 +7,10 @@ UXP, and optionally wires backup (GCS), enterprise license, provider VPA,
 Knative, k8gb global failover, and ArgoCD. cert-manager is always installed.
 
 > **cert-manager** is installed unconditionally on every control plane (a free
-> dependency of Knative/k8gb/ArgoCD Ingress TLS). **nginx-ingress** is installed
-> only when `k8gb` or `argocd` is enabled, so plain control planes do not pay for
-> an idle cloud load balancer.
+> dependency of Knative/k8gb/ArgoCD Ingress TLS). An **Envoy Gateway** (Gateway
+> API) data plane is installed only when k8gb or argocd is enabled; unlike the
+> retired community ingress-nginx (archived 2026-03-24) it provisions no cloud
+> load balancer until a Gateway exists.
 
 Translation of Azure → GCP concepts:
 
@@ -249,9 +250,10 @@ FleetGslb exists.
 
 ### ArgoCD
 
-When `argocd.enabled: "yes"`, ArgoCD is installed with a UI Ingress
-(`argocd.hostname`, nginx + a self-signed cert-manager Certificate) and a root
-app-of-apps `Application` pointing at the public git repo `argocd.url`. See
+When `argocd.enabled: "yes"`, ArgoCD is installed with a UI exposed via Envoy
+Gateway (a Gateway + HTTPRoute on `argocd.hostname`, TLS terminated with a
+self-signed cert-manager Certificate) and a root app-of-apps `Application`
+pointing at the public git repo `argocd.url`. See
 `examples/controlplane/with-argocd.yaml`.
 
 ## Testing

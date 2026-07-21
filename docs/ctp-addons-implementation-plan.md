@@ -24,10 +24,11 @@
 ## Goal of this PR
 
 Extend the `ControlPlane` composition so a child GKE cluster gets:
-- **cert-manager** and **nginx-ingress** installed **unconditionally** (always-on),
+- **cert-manager** installed **unconditionally** (always-on); the **Envoy
+  Gateway** data plane installed when `k8gb` or `argocd` is enabled,
 - **k8gb** (operator + CoreDNS via a native GCP Network LB) installed when
   `k8gb.enabled`,
-- **ArgoCD** (+ UI Ingress + a root app-of-apps `Application`) when `argocd.enabled`,
+- **ArgoCD** (+ UI Gateway/HTTPRoute + a root app-of-apps `Application`) when `argocd.enabled`,
 - the **status contract** `status.controlplane.k8gb.coreDNSEndpoint` +
   `delegationRecord` surfaced for the FleetGslb aggregator to consume.
 
@@ -74,10 +75,11 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
 ## Locked decisions
 
 - cert-manager: **always installed** (not gated). Free component; no license gate.
-- nginx-ingress: **always installed** (not gated). *Caveat: provisions an idle GCP
-  LB on baseline control planes that create no Ingress (knative uses its own
-  networking, not nginx). If that cost matters, gate behind
-  `k8gb.enabled OR argocd.enabled` - open for confirmation.*
+- nginx-ingress: **superseded.** The retired community ingress-nginx (archived
+  2026-03-24) was replaced with an Envoy Gateway (Gateway API) data plane,
+  gated on `k8gb.enabled OR argocd.enabled` (not always-on as originally
+  planned below). See `docs/superpowers/plans/2026-07-21-gateway-api-migration.md`.
+  k8gb is now v0.20.0 and cert-manager is v1.20.3.
 - **No AWS-LB-Controller-equivalent step.** GKE provisions an external Network LB
   with UDP support natively; CoreDNS is exposed by a plain `type: LoadBalancer`
   Service.
@@ -91,9 +93,10 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   avoid). Pick (a) or (b) explicitly in Step 3.
 - k8gb: gated by `k8gb.enabled`; **CoreDNS exposed via a native GCP Network LB
   serving UDP:53** (TCP:53 per the caveat above), **`extdns.enabled: false`** (no
-  external-dns). **Pin the k8gb chart to a version whose `Gslb` CRD matches
-  resilient-ctp's consumer (`k8gb.absa.oss/v1beta1`; resilient-ctp installs
-  v0.15.0) - do NOT track latest.** Reuse resilient-ctp's k8gb operator values
+  external-dns). **Pin the k8gb chart to a version whose `Gslb` CRD still ships
+  `k8gb.absa.oss/v1beta1` (resilient-ctp's consumer). v0.20.0 keeps that legacy
+  group via `installLegacyCrds: true` (default), so it is the current pin; verify
+  the legacy CRD group survives before any future bump.** Reuse resilient-ctp's k8gb operator values
   shape (`dnsZones`, `clusterGeoTag`, `extGslbClustersGeoTags`, `edgeDNSServers`,
   `deployCrds/deployRbac`) but **not** its hostNetwork nginx.
 - ArgoCD: gated by `argocd.enabled`; params `argocd.hostname` and `argocd.url`
@@ -125,6 +128,13 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
 - Verify: `up project build` + `up test run tests/*`.
 
 ## Step 2 - nginx-ingress (always-on, new)
+
+> **Superseded.** nginx-ingress (ingress-nginx, archived 2026-03-24) was
+> replaced with an Envoy Gateway (Gateway API) data plane gated on
+> `k8gb.enabled OR argocd.enabled`. See
+> `docs/superpowers/plans/2026-07-21-gateway-api-migration.md`. k8gb is now
+> v0.20.0 and cert-manager is v1.20.3. The steps below are kept as a historical
+> record of the original (now-superseded) design.
 
 - Create `functions/ctp/ingress.py` with `add_ingress_resources(rsp, id_val, config)`:
   an `ingress-nginx` `Release` (repo `https://kubernetes.github.io/ingress-nginx`,
@@ -188,11 +198,11 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
 ## Step 4 - argocd (gated `argocd.enabled`; app-of-apps)
 
 - **XRD**: `spec.parameters.argocd`: `enabled` (`yes`/`no`, default `no`),
-  `hostname` (UI Ingress host), `url` (public git repo).
+  `hostname` (UI Gateway/HTTPRoute host), `url` (public git repo).
 - **`functions/ctp/argo.py`** `add_argocd_resources(...)`:
   - ArgoCD `Release` (chart `argo-cd`, repo `https://argoproj.github.io/argo-helm`,
     pinned + renovate), `wait: true`, stale-Ready workaround, child ProviderConfig.
-  - UI `Ingress` (host `argocd.hostname`, nginx ingress class) with TLS. For a
+  - UI `Gateway`/`HTTPRoute` (host `argocd.hostname`, Envoy Gateway `GatewayClass`) with TLS. For a
     standalone CP a local cert-manager `Certificate` is fine; the **global**
     hostname's production cert is issued by the parent and synced down (see the
     GSLB decision record §8) - this PR only needs the UI reachable. Applied via
@@ -204,10 +214,10 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
     CRD exists), same pattern as the KnativeServing CR gate. Public repo -> no
     repo Secret.
 - **`functions/ctp/usages.py`**: `of: GKE, by: ...` `Usage` guards for the argocd
-  `Release` and each argocd `Object` (Ingress, Certificate, Application), emitted
+  `Release` and each argocd `Object` (Gateway, HTTPRoute, Certificate, Application), emitted
   only when argocd is enabled.
 - **`main.py`**: `if argocd and argocd.get("enabled") == "yes": add_argocd_resources(...)`.
-- Tests: ArgoCD `Release`, UI `Ingress`/`Certificate`, root `Application`, and the
+- Tests: ArgoCD `Release`, UI `Gateway`/`HTTPRoute`/`Certificate`, root `Application`, and the
   `Usage` guards render when enabled; absent when disabled.
 - Verify: build + tests.
 
@@ -217,7 +227,7 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   `ControlPlane` with `k8gb.enabled: "yes"` (+ `dnsZone`/`parentZone`/`strategy`)
   and `argocd.enabled: "yes"` (+ `hostname`/`url`).
 - Assertions (management-plane-visible signals):
-  - `Release` MRs **Synced + Ready**: cert-manager, nginx-ingress, k8gb, argocd
+  - `Release` MRs **Synced + Ready**: cert-manager, the Envoy Gateway data plane, k8gb, argocd
     (with `wait: true`, `state=deployed` implies the chart's resources are up).
   - k8gb CoreDNS observe-`Object` shows an LB ingress; XR
     `status.controlplane.k8gb.coreDNSEndpoint` is non-empty. **This exercises the
@@ -235,7 +245,7 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
 
 - Update `README.md` parameter table; add `examples/controlplane/with-k8gb.yaml`
   and `examples/controlplane/with-argocd.yaml`.
-- No new package dependencies expected - cert-manager/nginx/k8gb/argocd all reuse
+- No new package dependencies expected - cert-manager/Envoy Gateway/k8gb/argocd all reuse
   `helm.m.crossplane.io` + `kubernetes.m.crossplane.io` (already used by knative);
   the (deferred) reserved `Address` reuses the existing GCP provider MRs. Confirm
   they resolve.
