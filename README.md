@@ -59,15 +59,23 @@ from a local CRD schema cache (Claude has no GCP credentials and could not
 introspect the installed CRDs). The following are the highest-risk areas to
 verify with `up project build` and a real E2E run before trusting them:
 
-* **v2 namespaced MR API groups/versions** — e.g.
-  `container.gcp.m.upbound.io/v1beta2` (Cluster, NodePool),
-  `compute.gcp.m.upbound.io/v1beta1` (Network, Subnetwork),
-  `storage.gcp.m.upbound.io/v1beta1` (Bucket, BucketIAMMember),
+* **Composed child XRs, not raw container/compute MRs.** The GKE cluster and its
+  network are composed as the `GKE` and `Network` XRs
+  (`gcp.platform.upbound.io/v1alpha1`) from `configuration-gcp-gke` /
+  `configuration-gcp-network`; those child configurations own the underlying
+  `container`/`compute` managed resources, so this package references no
+  `container.gcp.m.upbound.io` / `compute.gcp.m.upbound.io` MR directly. Note the
+  namespaced container group serves only `v1beta1`; `v1beta2` exists solely for
+  the cluster-scoped `container.gcp.upbound.io`, so a namespaced
+  `container.gcp.m.upbound.io/v1beta2` reference is invalid.
+* **Directly-emitted MR API groups/versions (backup + workload identity).** The
+  only managed resources this package emits directly are
+  `storage.gcp.m.upbound.io/v1beta1` (Bucket, BucketIAMMember) and
   `cloudplatform.gcp.m.upbound.io/v1beta1` (ServiceAccount,
   ServiceAccountIAMMember). Confirm each against the installed CRD:
 
   ```bash
-  kubectl get crd clusters.container.gcp.m.upbound.io \
+  kubectl get crd buckets.storage.gcp.m.upbound.io \
     -o jsonpath='{.spec.versions[*].name}'
   ```
 
