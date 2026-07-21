@@ -5,8 +5,10 @@ CoreDNS via a native GCP external Network LB serving UDP+TCP:53, and observes
 that Service so the XR can surface the k8gb status contract (coreDNSEndpoint +
 delegationRecord) for the FleetGslb aggregator to consume.
 
-- Chart pinned to v0.15.0 so the shipped `Gslb` CRD stays `k8gb.absa.oss/v1beta1`,
-  matching configuration-resilient-ctp's consumer — do not blindly track latest.
+- Chart pinned to v0.20.0, which ships both `k8gb.absa.oss/v1beta1` (via
+  `installLegacyCrds: true`, the default) and the new `k8gb.io/v1beta1` `Gslb`
+  CRD, so configuration-resilient-ctp's consumer contract still holds - do not
+  blindly track latest.
 - `extdns.enabled: false`: this package is a producer only; the parent-side
   FleetGslb writes the NS delegation, not per-child external-dns.
 - The Helm release name is pinned to `k8gb` (external-name) so its CoreDNS
@@ -79,8 +81,9 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
                     "name": "k8gb",
                     "repository": "https://www.k8gb.io",
                     # renovate: datasource=helm depName=k8gb registryUrl=https://www.k8gb.io
-                    # Pinned: the Gslb CRD version is the producer/consumer contract.
-                    "version": "v0.15.0"
+                    # v0.20.0 still ships gslbs.k8gb.absa.oss (installLegacyCrds
+                    # default) - the producer/consumer contract with resilient-ctp holds.
+                    "version": "v0.20.0"
                 },
                 "namespace": "k8gb",
                 "skipCreateNamespace": False,
