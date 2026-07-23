@@ -125,6 +125,23 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
     resource.update(rsp.desired.resources["usage-release-gke"], usage_release_gke)
     resource.update(rsp.desired.resources["usage-gke-network"], usage_gke_network)
 
+    if k8gb_enabled or argocd_enabled:
+        _emit_gke_usage(
+            rsp, id_val, "usage-envoy-gateway-gke",
+            "helm.m.crossplane.io/v1beta1", "Release",
+            f"{id_val}-envoy-gateway",
+            "Envoy Gateway Release must finish uninstalling before the GKE cluster is deleted",
+            config)
+        # The EnvoyProxy + GatewayClass child Objects also guard the GKE cluster
+        # so they do not orphan-finalize when the cluster/kubeconfig is torn out.
+        for cr_name in ("envoy-proxy-config", "gateway-class"):
+            _emit_gke_usage(
+                rsp, id_val, f"usage-{cr_name}-gke",
+                "kubernetes.m.crossplane.io/v1alpha1", "Object",
+                f"{id_val}-{cr_name}",
+                f"Envoy Gateway {cr_name} Object must be removed before the GKE cluster is deleted",
+                config)
+
     if k8gb_enabled:
         _emit_gke_usage(
             rsp, id_val, "usage-k8gb-gke",
@@ -149,8 +166,8 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
             "ArgoCD Release must finish uninstalling before the GKE cluster is deleted",
             config)
         # Every child-cluster ArgoCD Object also guards the GKE cluster.
-        for cr_name in ("argocd-issuer", "argocd-cert", "argocd-ingress",
-                        "argocd-app"):
+        for cr_name in ("argocd-issuer", "argocd-cert", "argocd-gateway",
+                        "argocd-httproute", "argocd-app"):
             _emit_gke_usage(
                 rsp, id_val, f"usage-{cr_name}-gke",
                 "kubernetes.m.crossplane.io/v1alpha1", "Object",

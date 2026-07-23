@@ -9,7 +9,7 @@ Each section below is implemented in a sibling module:
   gke.py                (02) GKE XR (configuration-gcp-gke)
   uxp.py                (03) UXP v2 Helm Release
   k8gb.py               (04b) k8gb operator + CoreDNS producer
-  argo.py               (05b) ArgoCD add-on (UI Ingress + app-of-apps)
+  argo.py               (05b) ArgoCD add-on (UI Gateway/HTTPRoute + app-of-apps)
   usages.py             (04) deletion-order Usage guards
   backup.py             (05) GCS Bucket, BackupConfig, RBAC, Schedule
   workload_identity.py  (06) ServiceAccount, ServiceAccountIAMMember,
@@ -17,7 +17,7 @@ Each section below is implemented in a sibling module:
   licensing.py          (07) License Secret + License CR
   vpa.py                (08) VPA Helm Release
   certmanager.py        (09a) always-on cert-manager Helm Release
-  ingress.py            (09b) nginx-ingress (when k8gb or argocd enabled)
+  gateway.py            (09b) Envoy Gateway data plane (when k8gb or argocd enabled)
   knative.py            (09) knative-operator + serving CR
   runtime_config.py     (10) UpboundRuntimeConfig (ProviderVPA + Knative caps)
   status.py             (99) XR status writeback + ClaimConditions
@@ -37,8 +37,8 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .argo import add_argocd_resources
 from .backup import add_backup_resources
 from .certmanager import add_certmanager_resources
+from .gateway import add_gateway_resources
 from .gke import add_gke_resources
-from .ingress import add_ingress_resources
 from .k8gb import add_k8gb_resources
 from .knative import add_knative_resources
 from .licensing import add_license_resources
@@ -127,7 +127,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     uxp_deployed = is_release_deployed(observed_resources, "uxp-release")
     vpa_ready = is_release_deployed(observed_resources, "vpa-release")
     certmanager_ready = is_release_deployed(observed_resources, "certmanager-release")
-    ingress_ready = is_release_deployed(observed_resources, "ingress-nginx-release")
+    gateway_ready = is_release_deployed(observed_resources, "envoy-gateway-release")
     k8gb_deployed = is_release_deployed(observed_resources, "k8gb-release")
     argocd_deployed = is_release_deployed(observed_resources, "argocd-release")
     knative_op_ready = is_release_deployed(observed_resources, "knative-operator-release")
@@ -156,13 +156,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         argocd_enabled=argocd_enabled)
 
     # cert-manager is always installed (free component, no license gate) so the
-    # k8gb/argocd add-ons can rely on it for Ingress TLS independently of knative.
+    # k8gb/argocd add-ons can rely on it for Gateway TLS independently of knative.
     add_certmanager_resources(rsp, id_val, certmanager_ready, config)
 
-    # nginx-ingress is installed only when an add-on needs an Ingress, so plain
-    # control planes do not pay for an idle cloud load balancer.
+    # Envoy Gateway is installed only when an add-on needs an HTTP data plane, so
+    # plain control planes do not run an idle gateway. Unlike nginx it provisions
+    # no cloud LB until a Gateway resource exists.
     if k8gb_enabled or argocd_enabled:
-        add_ingress_resources(rsp, id_val, ingress_ready, config)
+        add_gateway_resources(rsp, id_val, gateway_ready, config)
 
     # k8gb producer — operator + CoreDNS exposed via a native GCP external LB.
     if k8gb_enabled:
@@ -171,7 +172,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     if argocd_enabled:
         add_argocd_resources(rsp, id_val, argocd, argocd_deployed,
-                             certmanager_ready, config)
+                             certmanager_ready, gateway_ready, config)
 
     if backup.get("enabled") == "yes":
         add_backup_resources(rsp, id_val, location, project, provider_config,

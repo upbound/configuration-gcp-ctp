@@ -7,9 +7,10 @@ UXP, and optionally wires backup (GCS), enterprise license, provider VPA,
 Knative, k8gb global failover, and ArgoCD. cert-manager is always installed.
 
 > **cert-manager** is installed unconditionally on every control plane (a free
-> dependency of Knative/k8gb/ArgoCD Ingress TLS). **nginx-ingress** is installed
-> only when `k8gb` or `argocd` is enabled, so plain control planes do not pay for
-> an idle cloud load balancer.
+> dependency of Knative/k8gb/ArgoCD Ingress TLS). An **Envoy Gateway** (Gateway
+> API) data plane is installed only when k8gb or argocd is enabled; unlike the
+> retired community ingress-nginx (archived 2026-03-24) it provisions no cloud
+> load balancer until a Gateway exists.
 
 Translation of Azure → GCP concepts:
 
@@ -58,15 +59,23 @@ from a local CRD schema cache (Claude has no GCP credentials and could not
 introspect the installed CRDs). The following are the highest-risk areas to
 verify with `up project build` and a real E2E run before trusting them:
 
-* **v2 namespaced MR API groups/versions** — e.g.
-  `container.gcp.m.upbound.io/v1beta2` (Cluster, NodePool),
-  `compute.gcp.m.upbound.io/v1beta1` (Network, Subnetwork),
-  `storage.gcp.m.upbound.io/v1beta1` (Bucket, BucketIAMMember),
+* **Composed child XRs, not raw container/compute MRs.** The GKE cluster and its
+  network are composed as the `GKE` and `Network` XRs
+  (`gcp.platform.upbound.io/v1alpha1`) from `configuration-gcp-gke` /
+  `configuration-gcp-network`; those child configurations own the underlying
+  `container`/`compute` managed resources, so this package references no
+  `container.gcp.m.upbound.io` / `compute.gcp.m.upbound.io` MR directly. Note the
+  namespaced container group serves only `v1beta1`; `v1beta2` exists solely for
+  the cluster-scoped `container.gcp.upbound.io`, so a namespaced
+  `container.gcp.m.upbound.io/v1beta2` reference is invalid.
+* **Directly-emitted MR API groups/versions (backup + workload identity).** The
+  only managed resources this package emits directly are
+  `storage.gcp.m.upbound.io/v1beta1` (Bucket, BucketIAMMember) and
   `cloudplatform.gcp.m.upbound.io/v1beta1` (ServiceAccount,
   ServiceAccountIAMMember). Confirm each against the installed CRD:
 
   ```bash
-  kubectl get crd clusters.container.gcp.m.upbound.io \
+  kubectl get crd buckets.storage.gcp.m.upbound.io \
     -o jsonpath='{.spec.versions[*].name}'
   ```
 
@@ -249,9 +258,10 @@ FleetGslb exists.
 
 ### ArgoCD
 
-When `argocd.enabled: "yes"`, ArgoCD is installed with a UI Ingress
-(`argocd.hostname`, nginx + a self-signed cert-manager Certificate) and a root
-app-of-apps `Application` pointing at the public git repo `argocd.url`. See
+When `argocd.enabled: "yes"`, ArgoCD is installed with a UI exposed via Envoy
+Gateway (a Gateway + HTTPRoute on `argocd.hostname`, TLS terminated with a
+self-signed cert-manager Certificate) and a root app-of-apps `Application`
+pointing at the public git repo `argocd.url`. See
 `examples/controlplane/with-argocd.yaml`.
 
 ## Testing

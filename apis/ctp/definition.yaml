@@ -181,7 +181,7 @@ spec:
                     description: >-
                       Enable k8gb (Kubernetes Global Balancer) for health-aware, DNS-based global
                       failover. Installs the k8gb operator and CoreDNS exposed via a native GCP
-                      external LB, and pulls in nginx-ingress. See docs/ctp-addons-implementation-plan.md.
+                      external LB, and provisions an Envoy Gateway data plane. See docs/ctp-addons-implementation-plan.md.
                     properties:
                       enabled:
                         type: string
@@ -210,7 +210,7 @@ spec:
                   argocd:
                     type: object
                     description: >-
-                      Enable ArgoCD (GitOps app-of-apps) with a UI Ingress. Pulls in nginx-ingress.
+                      Enable ArgoCD (GitOps app-of-apps) with a UI exposed via Envoy Gateway (Gateway API).
                     properties:
                       enabled:
                         type: string
@@ -219,7 +219,7 @@ spec:
                         enum: ["yes", "no"]
                       hostname:
                         type: string
-                        description: Hostname for the ArgoCD UI Ingress (e.g. argocd.example.com).
+                        description: Hostname for the ArgoCD UI (e.g. argocd.example.com).
                       url:
                         type: string
                         description: Public git repository URL for the root app-of-apps Application.
