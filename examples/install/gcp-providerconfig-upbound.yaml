@@ -17,11 +17,14 @@
 #
 # Documentation:
 #   https://docs.upbound.io/concepts/control-planes/configuration/managed-identities/
+# This ProviderConfig must live in the SAME namespace as the ControlPlane XR
+# (here "platform", see examples/install/namespace.yaml): the composed managed
+# resources resolve the ProviderConfig by name within their own namespace.
 apiVersion: gcp.m.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
-  namespace: default
+  namespace: platform
 spec:
   projectID: crossplane-playground
   credentials:

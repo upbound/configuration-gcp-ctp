@@ -29,7 +29,7 @@ def add_gke_resources(rsp, id_val, location, project, provider_config, version,
         "kind": "GKE",
         "metadata": {
             "name": id_val,
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "gke"
             }
