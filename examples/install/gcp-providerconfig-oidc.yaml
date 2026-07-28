@@ -21,11 +21,15 @@
 # Note: this is NOT for the GKE cluster created by this configuration (that
 # cluster is the workload cluster — UXP runs on the upper cluster). Use this
 # manifest on the upper management cluster.
+#
+# This ProviderConfig must live in the SAME namespace as the ControlPlane XR
+# (here "platform", see examples/install/namespace.yaml): the composed managed
+# resources resolve the ProviderConfig by name within their own namespace.
 apiVersion: gcp.m.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
-  namespace: default
+  namespace: platform
 spec:
   projectID: crossplane-playground
   credentials:

@@ -147,6 +147,7 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
 gcloud iam service-accounts keys create key.json \
   --iam-account "upbound-gcp-ctp@${PROJECT}.iam.gserviceaccount.com"
 # Paste key.json into examples/install/gcp-credentials.yaml (under stringData.credentials).
+# For the Secret flavor, create that Secret in the same namespace as the XR (platform).
 ```
 
 Apply the namespace, then the chosen ProviderConfig (and the credentials secret

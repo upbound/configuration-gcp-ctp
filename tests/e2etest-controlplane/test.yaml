@@ -26,6 +26,12 @@
 # status.controlplane.k8gb.coreDNSEndpoint (verify non-empty manually - E2ETest
 # cannot assert arbitrary status fields).
 #
+# Connection-secret placement (manual check - E2ETest asserts conditions, not
+# Secret existence): confirm the three composition connection secrets land in the
+# XR namespace ("platform") and none leak into "default":
+#   kubectl get secret -n platform e2etestcp-gkecluster e2etestcp-sakey e2etestcp-connection
+#   kubectl get secret -n default | grep e2etestcp   # expect no matches
+#
 # Scope: installation only. It does NOT test DNS failover - nothing writes the NS
 # delegation yet (FleetGslb is a separate workstream). No license is supplied; the
 # backup wiring and add-ons need none (executing a real backup needs a UXP
