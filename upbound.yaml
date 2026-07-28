@@ -22,6 +22,14 @@ spec:
     version: v2.6.0
   - apiVersion: pkg.crossplane.io/v1
     kind: Provider
+    package: xpkg.upbound.io/upbound/provider-gcp-compute
+    version: v2.6.0
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.upbound.io/upbound/provider-gcp-container
+    version: v2.6.0
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
     package: xpkg.upbound.io/upbound/provider-gcp-storage
     version: v2.6.0
   - apiVersion: pkg.crossplane.io/v1
