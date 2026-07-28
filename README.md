@@ -101,10 +101,30 @@ verify with `up project build` and a real E2E run before trusting them:
 TODO — push to a registry and install the Configuration package on a control
 plane.
 
+### The ControlPlane is namespaced
+
+The `ControlPlane` XR is **namespaced**. Every resource it manages - the
+credentials Secret, the GCP `ProviderConfig`, the composed managed resources, and
+the connection secrets the composition writes (GKE kubeconfig `-gkecluster`, SA
+key `-sakey`, `-connection`) - lives in the XR's namespace. Choose an
+operator-managed, RBAC-restricted namespace to keep cluster-admin kubeconfigs and
+cloud credentials out of `default`, and create it first (Crossplane does not
+create it):
+
+```bash
+kubectl apply -f examples/install/namespace.yaml   # namespace: platform
+```
+
+Applying a `ControlPlane` with no namespace falls back to `default`. Resources
+installed on the inner GKE cluster (UXP in `crossplane-system`, cert-manager,
+add-ons, etc.) keep their own fixed namespaces regardless of the XR's namespace.
+
 ### Upper (management) cluster: configure the GCP provider
 
-The management cluster running this package needs a GCP `ProviderConfig`
-(namespaced, in the `default` namespace) so the providers can authenticate.
+The providers authenticate with a GCP `ProviderConfig` that must live in the
+**same namespace as the ControlPlane XR** (a namespaced ProviderConfig reads its
+Secret from its own namespace, and the composed managed resources resolve the
+ProviderConfig by name within their own namespace).
 See `examples/install/` for three flavors:
 
 * `gcp-providerconfig-secret.yaml` — service-account key in a Secret (use this
@@ -127,10 +147,12 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
 gcloud iam service-accounts keys create key.json \
   --iam-account "upbound-gcp-ctp@${PROJECT}.iam.gserviceaccount.com"
 # Paste key.json into examples/install/gcp-credentials.yaml (under stringData.credentials).
+# For the Secret flavor, create that Secret in the same namespace as the XR (platform).
 ```
 
-Apply the chosen ProviderConfig (and the credentials secret if you used the
-Secret flavor) once, then proceed to applying `ControlPlane` XRs.
+Apply the namespace, then the chosen ProviderConfig (and the credentials secret
+if you used the Secret flavor) into that same namespace, then proceed to applying
+`ControlPlane` XRs into it.
 
 ### Required GCP permissions
 
@@ -270,9 +292,10 @@ pointing at the public git repo `argocd.url`. See
 * E2E (real GCP): `up test run tests/e2etest-controlplane --e2e`
 * E2E add-ons (k8gb + ArgoCD, real GCP): `up test run tests/e2etest-addons --e2e`
 
-The E2E test requires a working GCP `ProviderConfig` named `default` (namespaced,
-in the `default` namespace) with sufficient permissions to create networks, GKE
-clusters, service accounts, IAM bindings, and GCS buckets.
+The E2E test requires a working GCP `ProviderConfig` named `default`, namespaced
+in the same namespace as the `ControlPlane` under test (the e2e uses `platform`),
+with sufficient permissions to create networks, GKE clusters, service accounts,
+IAM bindings, and GCS buckets.
 
 > Note: the composition tests are loose shape asserts — they verify field
 > names, not that apiVersions/field paths are correct against the live CRDs.
