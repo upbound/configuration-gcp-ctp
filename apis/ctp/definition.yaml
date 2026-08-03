@@ -315,13 +315,24 @@ spec:
                         type: string
                       coreDNSEndpoint:
                         description: >-
-                          The k8gb CoreDNS LoadBalancer endpoint (IP or hostname). Populated once
-                          the GCP external LB is provisioned. On GCP this is an IP, usable as NS glue.
+                          Informational: the GKE CoreDNS LoadBalancer IP. NS glue is built from
+                          the pinned reserved Address in glueAddresses, not from this value.
                         type: string
+                      nsName:
+                        description: >-
+                          The k8gb NS name for this cluster (gslb-ns-<geoTag>-<flatZone>.<parentZone>),
+                          consumed by FleetGslb.
+                        type: string
+                      glueAddresses:
+                        description: >-
+                          Pinned CoreDNS reserved static IP backing the NS glue A record. Consumed by FleetGslb.
+                        type: array
+                        items:
+                          type: string
                       delegationRecord:
                         description: >-
-                          Ready-to-use NS + glue delegation for this cluster, in k8gb's
-                          gslb-ns-<zone>-<geoTag> convention, for FleetGslb to write to the parent zone.
+                          Ready-to-use NS + glue delegation (one NS line plus one A line per
+                          glueAddress) for FleetGslb to write to the parent zone.
                         type: string
                   providerVerticalPodAutoscaling:
                     description: Provider VPA feature status.

@@ -31,9 +31,44 @@ from .prelude import stamp
 
 
 def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
-                       k8gb_deployed, config):
+                       k8gb_deployed, location, provider_config, address,
+                       config):
     dns_zone = k8gb_param.get("dnsZone", "")
     parent_zone = k8gb_param.get("parentZone", "")
+
+    # One reserved regional external IP, pinned on the CoreDNS UDP LoadBalancer so
+    # its glue is a stable IPv4 A record. A GCP regional external L4 LB has a
+    # SINGLE IP, so exactly one Address (no per-subnet loop). This is a GCP MR
+    # (management creds via provider_config), unlike the child Helm Release.
+    address_mr = {
+        "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+        "kind": "Address",
+        "metadata": {
+            "name": f"{id_val}-k8gb-address",
+            "namespace": config["namespace"],
+            "annotations": {
+                "crossplane.io/composition-resource-name": "k8gb-address"
+            }
+        },
+        "spec": {
+            "forProvider": {
+                "addressType": "EXTERNAL",
+                "region": location,
+                "networkTier": "PREMIUM"
+            },
+            "providerConfigRef": {
+                "name": provider_config,
+                "kind": "ProviderConfig"
+            }
+        }
+    }
+    stamp(address_mr, config)
+    resource.update(rsp.desired.resources["k8gb-address"], address_mr)
+
+    # Hold the Release (which creates the LB) until the Address is reserved, so
+    # the LB is created once already bound to its static IP - changing
+    # loadBalancerIP on a live GKE LB forces a re-provision.
+    address_ready = bool(address)
 
     values = {
         "k8gb": {
@@ -49,7 +84,7 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
             ],
             "edgeDNSServers": ["1.1.1.1"]
         },
-        # Producer only — the parent (FleetGslb) writes the NS delegation.
+        # Producer only - the parent (FleetGslb) writes the NS delegation.
         "extdns": {"enabled": False},
         "coredns": {
             "serviceType": "LoadBalancer",
@@ -77,6 +112,9 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
             }
         }
     }
+
+    if address_ready:
+        values["coredns"]["service"]["loadBalancerIP"] = address
 
     release_annotations = {
         "crossplane.io/composition-resource-name": "k8gb-release",
@@ -115,8 +153,9 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
             }
         }
     }
-    stamp(release, config)
-    resource.update(rsp.desired.resources["k8gb-release"], release)
+    if address_ready:
+        stamp(release, config)
+        resource.update(rsp.desired.resources["k8gb-release"], release)
 
     # Observe-only Object on the child CoreDNS Service to read its LB endpoint.
     coredns_observe = {
