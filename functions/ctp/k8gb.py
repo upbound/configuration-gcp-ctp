@@ -1,9 +1,10 @@
-"""04b-k8gb — k8gb operator + CoreDNS producer (see aws-ctp docs/gslb-dns-architecture.md).
+"""04b-k8gb - k8gb operator + CoreDNS producer (see aws-ctp docs/gslb-dns-architecture.md).
 
 Installs the k8gb operator and its CoreDNS on the child GKE cluster, exposing
-CoreDNS via a native GCP external Network LB serving UDP+TCP:53, and observes
-that Service so the XR can surface the k8gb status contract (coreDNSEndpoint +
-delegationRecord) for the FleetGslb aggregator to consume.
+CoreDNS via a single UDP-only GCP external L4 LoadBalancer pinned to one reserved
+regional static IP, and observes that Service so the XR can surface the k8gb
+status contract (nsName, glueAddresses, delegationRecord, coreDNSEndpoint) for
+the FleetGslb aggregator to consume.
 
 - Chart pinned to v0.20.0, which ships both `k8gb.absa.oss/v1beta1` (via
   `installLegacyCrds: true`, the default) and the new `k8gb.io/v1beta1` `Gslb`
@@ -13,11 +14,15 @@ delegationRecord) for the FleetGslb aggregator to consume.
   FleetGslb writes the NS delegation, not per-child external-dns.
 - The Helm release name is pinned to `k8gb` (external-name) so its CoreDNS
   Service is `k8gb-coredns` in namespace `k8gb`, the name k8gb expects.
-- CoreDNS keeps the chart's native TCP+UDP:53 Service; on GKE a single external
-  L4 LB serving both protocols requires backend-service (RBS) load balancing,
-  opted into with the `cloud.google.com/l4-rbs: enabled` annotation. Needs GKE
-  >= 1.26 (MixedProtocolLBService is GA there). No LB-controller add-on is
-  needed — GKE provisions the LB natively.
+- CoreDNS is forced to a single UDP-only Service (`coredns.servers[].zones[].use_tcp:
+  false`). A mixed TCP+UDP:53 Service is rejected by GKE's L4 LB before
+  v1.36.2-gke.1498000 (SyncLoadBalancerFailed), so the chart-default mixed Service
+  never provisions on GKE <= 1.34; UDP-only provisions on every GKE version and is
+  k8gb's canonical shape (no AXFR, small responses, so no TCP needed). The
+  `cloud.google.com/l4-rbs: enabled` annotation (backend-service RBS passthrough
+  NLB) is kept - it is compatible with a UDP-only Service and with a pinned
+  `loadBalancerIP`. No LB-controller add-on is needed; GKE provisions the LB
+  natively.
 """
 
 from crossplane.function import resource
@@ -48,11 +53,25 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
         "extdns": {"enabled": False},
         "coredns": {
             "serviceType": "LoadBalancer",
+            # UDP-only single Service. A mixed TCP+UDP:53 Service is rejected by
+            # GKE's L4 LB before v1.36.2 (SyncLoadBalancerFailed); UDP-only
+            # provisions on every GKE version and is k8gb's canonical shape (it
+            # needs no TCP - no AXFR, small responses). Reproduces the chart
+            # default servers block with use_tcp flipped to false.
+            "servers": [
+                {
+                    "zones": [{"zone": ".", "use_tcp": False}],
+                    "port": 5353,
+                    "servicePort": 53,
+                    "plugins": [
+                        {"name": "prometheus", "parameters": "0.0.0.0:9153"}
+                    ]
+                }
+            ],
             "service": {
                 "annotations": {
-                    # Backend-service (RBS) external passthrough NLB so one LB IP
-                    # serves both TCP:53 and UDP:53 (the coredns Service is
-                    # mixed-protocol). GKE's legacy target-pool LB cannot.
+                    # Backend-service (RBS) external passthrough NLB; compatible
+                    # with a UDP-only Service and with loadBalancerIP.
                     "cloud.google.com/l4-rbs": "enabled"
                 }
             }

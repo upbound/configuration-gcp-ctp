@@ -779,6 +779,15 @@ spec:
             enabled: false
           coredns:
             serviceType: LoadBalancer
+            servers:
+            - zones:
+              - zone: .
+                use_tcp: false
+              port: 5353
+              servicePort: 53
+              plugins:
+              - name: prometheus
+                parameters: 0.0.0.0:9153
             service:
               annotations:
                 cloud.google.com/l4-rbs: "enabled"
