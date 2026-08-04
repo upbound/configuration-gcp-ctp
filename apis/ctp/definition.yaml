@@ -207,6 +207,9 @@ spec:
                         - roundRobin
                         - geoip
                         default: failover
+                    x-kubernetes-validations:
+                    - rule: 'self.enabled != "yes" || (has(self.dnsZone) && self.dnsZone != "" && has(self.parentZone) && self.parentZone != "")'
+                      message: k8gb.dnsZone and k8gb.parentZone are required when k8gb.enabled is yes
                   argocd:
                     type: object
                     description: >-
