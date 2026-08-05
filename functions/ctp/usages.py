@@ -157,6 +157,40 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
             f"{id_val}-k8gb-coredns",
             "k8gb CoreDNS observe Object must be removed before the GKE cluster is deleted",
             config)
+        # The CoreDNS reserved Address must outlive the k8gb Release: releasing
+        # the static IP while the live LB still uses it fails. of: Address,
+        # by: Release. Exactly one Address per control plane (single regional
+        # external LB IP), so no loop.
+        usage_address = {
+            "apiVersion": "protection.crossplane.io/v1beta1",
+            "kind": "Usage",
+            "metadata": {
+                "name": f"{id_val}-usage-k8gb-address-release",
+                "namespace": config["namespace"],
+                "annotations": {
+                    "crossplane.io/composition-resource-name": "usage-k8gb-address-release"
+                }
+            },
+            "spec": {
+                "of": {
+                    "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+                    "kind": "Address",
+                    "resourceRef": {
+                        "name": f"{id_val}-k8gb-address",
+                        "namespace": config["namespace"]
+                    }
+                },
+                "by": {
+                    "apiVersion": "helm.m.crossplane.io/v1beta1",
+                    "kind": "Release",
+                    "resourceRef": {"name": f"{id_val}-k8gb"}
+                },
+                "reason": "CoreDNS reserved Address must be released only after the k8gb Release (and its LB) is gone",
+                "replayDeletion": True
+            }
+        }
+        stamp(usage_address, config)
+        resource.update(rsp.desired.resources["usage-k8gb-address-release"], usage_address)
 
     if argocd_enabled:
         _emit_gke_usage(

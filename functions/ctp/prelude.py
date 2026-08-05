@@ -250,3 +250,14 @@ def extract_coredns_endpoint(observed: Dict) -> str:
         return ""
     first = ingress[0]
     return first.get("ip") or first.get("hostname") or ""
+
+
+def extract_k8gb_address(observed: Dict) -> str:
+    """The reserved static IP for the CoreDNS LoadBalancer, read from the
+    composed Address MR's status.atProvider.address. Empty until the Address is
+    reserved. This is the stable NS glue, unlike the ephemeral GKE LB IP."""
+    obs = observed.get("k8gb-address")
+    if not obs:
+        return ""
+    res = obs.resource if hasattr(obs, "resource") else obs
+    return res.get("status", {}).get("atProvider", {}).get("address", "")

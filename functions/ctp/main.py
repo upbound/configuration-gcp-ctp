@@ -50,6 +50,7 @@ from .prelude import (
     check_license_conflict,
     derive_k8gb_ext_geo_tags,
     derive_k8gb_geo_tag,
+    extract_k8gb_address,
     get_nodepool_actual_machine_type,
     get_workload_identity_sa_email,
     is_knative_serving_ready,
@@ -112,6 +113,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # the same dnsZone (cross-cloud peers are injected later by FleetGslb).
     k8gb_geo_tag = ""
     k8gb_ext_geo_tags = ""
+    k8gb_address = ""
     if k8gb_enabled:
         k8gb_geo_tag = derive_k8gb_geo_tag(k8gb, location, id_val)
         k8gb_ext_geo_tags = derive_k8gb_ext_geo_tags(
@@ -121,6 +123,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         name: resource.struct_to_dict(res.resource)
         for name, res in req.observed.resources.items()
     }
+
+    if k8gb_enabled:
+        k8gb_address = extract_k8gb_address(observed_resources)
 
     # GKE Workload Identity service-account email is deterministic from the
     # project; prefer the observed value once the GSA is created.
@@ -170,10 +175,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if k8gb_enabled or argocd_enabled:
         add_gateway_resources(rsp, id_val, gateway_ready, config)
 
-    # k8gb producer — operator + CoreDNS exposed via a native GCP external LB.
+    # k8gb producer - operator + CoreDNS exposed via a native GCP external LB.
     if k8gb_enabled:
         add_k8gb_resources(rsp, id_val, k8gb, k8gb_geo_tag, k8gb_ext_geo_tags,
-                           k8gb_deployed, config)
+                           k8gb_deployed, location, provider_config,
+                           k8gb_address, config)
 
     if argocd_enabled:
         add_argocd_resources(rsp, id_val, argocd, argocd_deployed,
@@ -207,4 +213,4 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  sa_email, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_machine_type, ng_size_mismatch, vpa, knative,
-                 k8gb, k8gb_geo_tag, license_conflict, config)
+                 k8gb, k8gb_geo_tag, k8gb_address, license_conflict, config)
