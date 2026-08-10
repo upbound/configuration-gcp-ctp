@@ -110,4 +110,10 @@ test = e2etest.E2ETest(
 )
 
 # The test runner expects an "items" array, one entry per test.
-print(yaml.dump({"items": [test.model_dump(by_alias=True, exclude_none=True)]}))
+item = test.model_dump(by_alias=True, exclude_none=True)
+# Strip the two model-default fields the retired test.yaml never carried, so the
+# emitted E2ETest is byte-identical to it (both equal the platform defaults):
+#   spec.crossplane.state == "Running", spec.setupTimeoutSeconds == 600
+item["spec"]["crossplane"].pop("state", None)
+item["spec"].pop("setupTimeoutSeconds", None)
+print(yaml.dump({"items": [item]}))
