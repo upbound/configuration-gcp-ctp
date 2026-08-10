@@ -230,7 +230,7 @@ When this composition provisions a GKE cluster, the cluster is configured with:
   running `workloadMetadataConfig.mode: GKE_METADATA` — so any pod whose KSA is
   annotated with `iam.gke.io/gcp-service-account` impersonates the bound GSA.
 * UXP installed in `crossplane-system`. UXP's backup controller already uses
-  Workload Identity (wired by `functions/ctp/workload_identity.py`) when
+  Workload Identity (wired by `functions/ctp/function/workload_identity.py`) when
   `spec.parameters.backup.enabled: "yes"`.
 
 This composition deliberately does **not** install GCP providers or a generic
