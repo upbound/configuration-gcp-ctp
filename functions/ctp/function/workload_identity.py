@@ -3,7 +3,7 @@ BucketIAMMember + Kubernetes ServiceAccount annotation + controller restart +
 optional Restore-from-backup.
 
 GKE Workload Identity. Gated by the caller on backup.enabled == "yes" and UXP
-deployed — see compose() in main.py. Ported from
+deployed — see compose() in fn.py. Ported from
 configuration-azure-ctp/workload_identity.py.
 
 Where Azure Workload Identity used a UserAssignedIdentity +
