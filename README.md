@@ -182,25 +182,54 @@ When `spec.parameters.license.secretRef` is set, the composition copies the
 license payload from a Secret on the management (upper) cluster into a Secret
 on the newly-created downstream (inner) GKE cluster, then creates a `License`
 CR there. Apply the license JSON ONLY as a Kubernetes Secret on the management
-cluster — one Secret can serve any number of `ControlPlane` XRs:
+cluster.
+
+**Use a separate license key for every downstream control plane.** The
+[UXP license management docs](https://docs.upbound.io/manuals/uxp/howtos/license-management/#add-a-license)
+state: "You may not re-use licenses across multiple Upbound Crossplane
+clusters." Each `ControlPlane` XR creates its own downstream UXP cluster, so
+do not point two `ControlPlane` XRs at the same license Secret, and do not
+re-use the management cluster's own license. Store one Secret per downstream
+control plane on the management cluster, each holding a distinct license:
 
 ```bash
-kubectl create secret generic uxp-license \
-  --from-file=license.json=./license.json \
+kubectl create secret generic uxp-license-<controlplane-name> \
+  --from-file=license.json=./license-<controlplane-name>.json \
   -n crossplane-system \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Then each `ControlPlane` XR references it:
+Then each `ControlPlane` XR references its own Secret:
 
 ```yaml
 spec:
   parameters:
     license:
       secretRef:
-        name: uxp-license
+        name: uxp-license-<controlplane-name>
         namespace: crossplane-system
 ```
+
+A `ControlPlane` whose license Secret an older `ControlPlane` already uses reports a
+`LicenseConflict` condition and gets no license. A license it already has installed is
+kept, from the Secret it was installed from, until the conflict is resolved.
+
+- The condition is in `status.controlplane.conditions`, not `status.conditions`. Its
+  message names the oldest other `ControlPlane` on the Secret as `namespace/name`.
+- "Older" means `metadata.creationTimestamp`, with `namespace/name` breaking ties. A
+  `ControlPlane` being deleted holds no claim. Restoring or re-applying XRs resets
+  `creationTimestamp` and can change the order, but never removes an installed license.
+- To resolve it, point the newer `ControlPlane` at its own Secret.
+- Only references to the same Secret are detected: two Secrets holding the same license
+  JSON are not, and neither are AWS or Azure `ControlPlane`s on the same management
+  cluster, since only `gcp.platform.upbound.io` `ControlPlane`s are compared.
+- `ControlPlane`s are compared across all namespaces, so the message can name one in
+  another namespace, and k8gb peers on the same `dnsZone` get each other's geo tags
+  across namespaces. This assumes a single-tenant management cluster.
+
+**Upgrading with `ControlPlane`s that share a Secret:** earlier releases never ran this
+check. After the upgrade every sharer but the oldest reports `LicenseConflict` and keeps
+its installed license; give each its own Secret and license to clear it.
 
 **Do NOT run `up uxp license apply <license.json>` on the management cluster**
 when the license is intended for a downstream control plane — it creates a
@@ -216,7 +245,7 @@ dev license restricted to single-node Kind clusters will fail validation on a
 multi-node GKE regardless of `nodes.count`. Inspect the embedded claims:
 
 ```bash
-kubectl get secret -n crossplane-system uxp-license \
+kubectl get secret -n crossplane-system uxp-license-<controlplane-name> \
   -o jsonpath='{.data.license\.json}' | base64 -d | python3 -m json.tool
 ```
 
