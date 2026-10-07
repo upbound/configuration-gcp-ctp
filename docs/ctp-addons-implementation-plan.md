@@ -43,8 +43,8 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   `add_*_resources(...)`; that logic now lives in `function/fn.py`. The new
   `function/main.py` is the gRPC serving CLI, a separate file.)
 - XRD: `apis/ctp/definition.yaml`. Composition: `apis/ctp/composition.yaml`
-  (pipeline: `function-extra-resources` fetches all `ControlPlane`s into
-  `allControlPlanes`, then the Python `ctp` function, then `function-auto-ready`).
+  (pipeline: the Python `ctp` function, which requests all `ControlPlane`s as the
+  `allControlPlanes` required resources, then `function-auto-ready`).
 - **Cloud params:** `spec.parameters.location` (GCP region or zone, e.g.
   `us-central1`) **and** `spec.parameters.project` (GCP project ID). Cluster
   metadata is read from the composed **GKE XR** `status.gke.{clusterName,
@@ -176,7 +176,7 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
     collides if two CPs share a location; incorporate the CP `id`
     (e.g. `gcp-<location>-<id-suffix>`) or require the param.
   - `extGslbClustersGeoTags` derived from **same-cloud peers** in `allControlPlanes`
-    (delivered by `function-extra-resources`, as used for `check_license_conflict`)
+    (required resources requested by the `ctp` function, as used for `check_license_conflict`)
     that have k8gb enabled + same `dnsZone`. Cross-cloud peers come from the fleet
     layer (out of scope here); empty is acceptable for a single-cluster start.
     **Ownership seam:** when FleetGslb lands it injects cross-cloud geo-tags -

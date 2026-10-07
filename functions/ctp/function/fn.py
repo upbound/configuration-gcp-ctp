@@ -53,6 +53,7 @@ from .prelude import (
     derive_k8gb_ext_geo_tags,
     derive_k8gb_geo_tag,
     extract_k8gb_address,
+    get_installed_license,
     get_nodepool_actual_machine_type,
     get_workload_identity_sa_email,
     is_knative_serving_ready,
@@ -197,8 +198,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                                         provider_config, bucket_name,
                                         observed_resources, install_from, config)
 
-    if license_param and not license_conflict:
-        add_license_resources(rsp, id_val, license_param, config)
+    # On conflict, keep a license already installed, from the Secret it was
+    # installed from; only a new claim is withheld.
+    installed_license = get_installed_license(observed_resources) if license_conflict else None
+    if license_param and (not license_conflict or installed_license):
+        add_license_resources(rsp, id_val, installed_license or license_param, config)
 
     if vpa and vpa.get("enabled") == "yes" and features_licensed:
         add_vpa_resources(rsp, id_val, vpa, vpa_ready, config)
