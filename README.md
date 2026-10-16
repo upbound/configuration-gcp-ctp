@@ -210,16 +210,22 @@ spec:
         namespace: crossplane-system
 ```
 
-A `ControlPlane` whose license Secret an older `ControlPlane` already uses reports a
+A `ControlPlane` whose license Secret another `ControlPlane` owns reports a
 `LicenseConflict` condition and gets no license. A license it already has installed is
 kept, from the Secret it was installed from, until the conflict is resolved.
 
 - The condition is in `status.controlplane.conditions`, not `status.conditions`. Its
-  message names the oldest other `ControlPlane` on the Secret as `namespace/name`.
-- "Older" means `metadata.creationTimestamp`, with `namespace/name` breaking ties. A
-  `ControlPlane` being deleted holds no claim. Restoring or re-applying XRs resets
-  `creationTimestamp` and can change the order, but never removes an installed license.
-- To resolve it, point the newer `ControlPlane` at its own Secret.
+  message names the owner as `namespace/name`.
+- The owner is the `ControlPlane` holding the license, recorded in
+  `status.controlplane.license`. Among several holders, or with none, the oldest by
+  `metadata.creationTimestamp` owns it, with `namespace/name` breaking ties. A `ControlPlane`
+  being deleted holds no claim.
+- Two `ControlPlane`s created or re-pointed at the same moment can both install the
+  license before either records its claim. The one that does not own the Secret then
+  reports `LicenseConflict` and keeps its license.
+- Recreating XRs without their status (e.g. a restore that skips status) resets
+  `creationTimestamp` and drops the holder claim, so another sharer can install it too.
+- To resolve it, point the `ControlPlane` reporting the conflict at its own Secret.
 - Only references to the same Secret are detected: two Secrets holding the same license
   JSON are not, and neither are AWS or Azure `ControlPlane`s on the same management
   cluster, since only `gcp.platform.upbound.io` `ControlPlane`s are compared.
@@ -228,14 +234,13 @@ kept, from the Secret it was installed from, until the conflict is resolved.
   across namespaces. This assumes a single-tenant management cluster.
 
 **Upgrading with `ControlPlane`s that share a Secret:** earlier releases never ran this
-check. After the upgrade every sharer but the oldest reports `LicenseConflict` and keeps
-its installed license; give each its own Secret and license to clear it.
+check. Within a reconcile or two after the upgrade, every sharer but the oldest reports
+`LicenseConflict` (the oldest may report it for one reconcile until its own claim is
+recorded) and keeps its installed license; give each its own Secret and license to
+clear it.
 
-**Do NOT run `up uxp license apply <license.json>` on the management cluster**
-when the license is intended for a downstream control plane — it creates a
-(useless, cosmetic-error-producing) management-side License CR in addition to
-the Secret. If you already did, `kubectl delete license.licensing.upbound.io/uxp`
-is safe.
+Do not run `up uxp license apply` on the management cluster: it also installs the license
+there as a `License` CR, re-using it across two UXP clusters.
 
 #### License-validity gating
 
@@ -296,15 +301,18 @@ All require `spec.parameters.project` to be set to a real GCP project ID.
 
 When `k8gb.enabled: "yes"`, the control plane becomes a **producer** in the fleet
 GSLB architecture (`configuration-aws-ctp/docs/gslb-dns-architecture.md`): it
-installs the k8gb operator and CoreDNS exposed through a native GCP external LB
+installs the k8gb operator and CoreDNS exposed through native GCP external LBs
 serving UDP+TCP:53, and surfaces `status.controlplane.k8gb.coreDNSEndpoint` +
 `delegationRecord` for the parent-side FleetGslb aggregator. Parameters:
 `dnsZone` (load-balanced zone), `parentZone`, `clusterGeoTag` (defaults to
-`gcp-<location>-<id>`), and `strategy` (`failover`/`roundRobin`/`geoip`). The
-CoreDNS LB uses backend-service (RBS) load balancing for mixed-protocol
-TCP+UDP:53 and requires GKE >= 1.26. No AWS-style LB controller is needed — GKE
-provisions the external LB natively. See `examples/controlplane/with-k8gb.yaml`.
-GSLB is not yet functional end-to-end — nothing writes the NS delegation until
+`gcp-<location>-<id>`), and `strategy` (`failover`/`roundRobin`/`geoip`). CoreDNS
+is served by two backend-service (RBS) passthrough LB Services on one reserved
+static IP: the chart's `k8gb-coredns` (UDP:53) and `k8gb-coredns-tcp` (TCP:53). A
+single mixed-protocol Service needs GKE >= 1.34.1-gke.2190000 plus extra LB
+settings, and the XRD still offers 1.32 and 1.33. No AWS-style LB controller is
+needed - GKE provisions the external LBs natively. See
+`examples/controlplane/with-k8gb.yaml`.
+GSLB is not yet functional end-to-end - nothing writes the NS delegation until
 FleetGslb exists.
 
 ### ArgoCD

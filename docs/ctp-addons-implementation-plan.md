@@ -26,7 +26,7 @@
 Extend the `ControlPlane` composition so a child GKE cluster gets:
 - **cert-manager** installed **unconditionally** (always-on); the **Envoy
   Gateway** data plane installed when `k8gb` or `argocd` is enabled,
-- **k8gb** (operator + CoreDNS via a native GCP Network LB) installed when
+- **k8gb** (operator + CoreDNS via native GCP Network LBs) installed when
   `k8gb.enabled`,
 - **ArgoCD** (+ UI Gateway/HTTPRoute + a root app-of-apps `Application`) when `argocd.enabled`,
 - the **status contract** `status.controlplane.k8gb.coreDNSEndpoint` +
@@ -85,8 +85,8 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   planned below). See `docs/superpowers/plans/2026-07-21-gateway-api-migration.md`.
   k8gb is now v0.20.0 and cert-manager is v1.20.3.
 - **No AWS-LB-Controller-equivalent step.** GKE provisions an external Network LB
-  with UDP support natively; CoreDNS is exposed by a plain `type: LoadBalancer`
-  Service.
+  with UDP support natively; CoreDNS is exposed by plain `type: LoadBalancer`
+  Services.
 - **GKE mixed-protocol caveat (real - resolve during Step 3).** DNS wants UDP:53
   and TCP:53. `MixedProtocolLBService` is GA in the k8s API (1.26+), but a single
   **external** L4 LB serving both protocols on GKE requires **Regional Backend
@@ -95,6 +95,11 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   (b) **UDP-primary for v1** - expose UDP:53 only (GSLB answers are small; TCP is a
   fast-follow), the simplest path; (c) two Services (two IPs - complicates glue,
   avoid). Pick (a) or (b) explicitly in Step 3.
+  **Resolved:** (b) shipped first, then (c) on ONE shared IP, not two: GKE lets LB
+  Services share a static IP when protocol/port differ, so the chart's UDP Service
+  and a TCP-only `k8gb-coredns-tcp` keep one glue address (`k8gb.py`). (a) needs
+  GKE >= 1.34.1-gke.2190000 for one mixed Service plus extra LB settings, and the
+  XRD offers 1.32/1.33.
 - k8gb: gated by `k8gb.enabled`; **CoreDNS exposed via a native GCP Network LB
   serving UDP:53** (TCP:53 per the caveat above), **`extdns.enabled: false`** (no
   external-dns). **Pin the k8gb chart to a version whose `Gslb` CRD still ships
@@ -108,8 +113,8 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
 - **Teardown: every new child-cluster `Release`/`Object` gets an
   `of: GKE, by: <resource>` `Usage` guard.** Child Objects orphan-finalize if the
   GKE cluster/kubeconfig is deleted first (fleet-wide deletion-ordering gap; only
-  the base guards exist today). Applies to k8gb, the CoreDNS observe Object, and
-  all argocd Objects.
+  the base guards exist today). Applies to k8gb, the CoreDNS observe Object, the
+  CoreDNS TCP Service Object, and all argocd Objects.
 - No e2e per step; **one** installation e2e at the end, behind `run-e2e-tests`.
 
 ## Step 1 - cert-manager decouple (always-on refactor)
@@ -168,7 +173,7 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
     LB-controller add-on is needed (GKE handles it). **Verify the exact
     k8gb/coredns chart keys** for LB exposure (e.g. `k8gb.coreDNSExposed` and the
     coredns subchart's `serviceType` / `serviceAnnotations`) - do not assume. For a
-    static, glue-stable IP (deferred, see Assumptions) the mechanism is a reserved
+    static, glue-stable IP (see Assumptions) the mechanism is a reserved
     regional external `Address` (a provider-gcp MR via `provider_config`)
     referenced by `spec.loadBalancerIP` or the annotation
     `networking.gke.io/load-balancer-ip-addresses`.
@@ -185,8 +190,8 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   - **Observe-only `Object`** (`managementPolicies: ["Observe"]`) on the child k8gb
     CoreDNS `Service` to read `status.loadBalancer.ingress`.
 - **`functions/ctp/function/usages.py`**: add `Usage` guards (`of: GKE, by: ...`) for
-  **both** the k8gb `Release` **and** the CoreDNS observe `Object`, emitted only
-  when k8gb is enabled.
+  the k8gb `Release`, the CoreDNS observe `Object` **and** the CoreDNS TCP Service
+  `Object`, emitted only when k8gb is enabled.
 - **`functions/ctp/function/status.py`**: populate `status.controlplane.k8gb` - `enabled`,
   `coreDNSEndpoint` (from the observed CoreDNS Service Object), `delegationRecord`
   (computed NS+glue string). **This is the contract the FleetGslb aggregator reads
@@ -195,8 +200,8 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   FleetGslb's later writes will not line up. `coreDNSEndpoint` must ultimately be an
   IP for glue (see the static-IP note in Assumptions).
 - **`main.py`**: `if k8gb and k8gb.get("enabled") == "yes": add_k8gb_resources(...)`.
-- Tests: k8gb `Release` + CoreDNS observe `Object` + both `Usage`s render when
-  enabled, absent when disabled.
+- Tests: k8gb `Release` + CoreDNS observe and TCP Service `Object`s + their `Usage`s
+  render when enabled, absent when disabled.
 - Verify: build + tests.
 
 ## Step 4 - argocd (gated `argocd.enabled`; app-of-apps)
@@ -236,7 +241,7 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   - k8gb CoreDNS observe-`Object` shows an LB ingress; XR
     `status.controlplane.k8gb.coreDNSEndpoint` is non-empty. **This exercises the
     real GCP UDP LB - it will fail if the mixed-protocol decision (Step 3) is not
-    resolved.**
+    resolved** (resolved: see the mixed-protocol caveat).
   - ArgoCD root `Application` `Object` applied (bonus: Synced/Healthy if cheap).
   - XR `Ready=True`.
 - **Scope:** this is an *installation* e2e. It does not test DNS failover -
@@ -251,7 +256,7 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
   and `examples/controlplane/with-argocd.yaml`.
 - No new package dependencies expected - cert-manager/Envoy Gateway/k8gb/argocd all reuse
   `helm.m.crossplane.io` + `kubernetes.m.crossplane.io` (already used by knative);
-  the (deferred) reserved `Address` reuses the existing GCP provider MRs. Confirm
+  the reserved `Address` reuses the existing GCP provider MRs. Confirm
   they resolve.
 - Keep the FleetGslb status contract (`coreDNSEndpoint`, `delegationRecord`) stable
   once defined in Step 3.
@@ -261,12 +266,13 @@ Extend the `ControlPlane` composition so a child GKE cluster gets:
 - Public git repo for ArgoCD (repo credentials Secret deferred).
 - Cross-cloud k8gb mesh membership (`extGslbClustersGeoTags` across clouds) is a
   fleet-layer concern; this PR wires only same-cloud peers (or none).
-- Stable CoreDNS glue IP (reserved regional GCP `Address`) - deferred here, but
-  **required the moment FleetGslb starts writing glue**: NS glue must be an A
-  record (IP), and a dynamic LB IP is not durable. Reserve a static Address when
-  the delegation goes live.
+- Stable CoreDNS glue IP (reserved regional GCP `Address`) - **required the
+  moment FleetGslb starts writing glue**: NS glue must be an A record (IP), and a
+  dynamic LB IP is not durable. Reserve a static Address when the delegation goes
+  live (done: both CoreDNS LBs pin the one reserved `Address`).
 - TCP:53 on the CoreDNS LB may be deferred if Step 3 picks the UDP-primary path;
-  revisit with RBS/subsetting when large-response DNS or zone transfers are needed.
+  revisit with RBS/subsetting when large-response DNS or zone transfers are needed
+  (resolved: see the mixed-protocol caveat).
 - Cross-cluster CoreDNS reachability on `:53` (peer k8gb + external resolvers) and
   its security posture - a fleet-layer concern, not exercised by this PR.
 - aws-ctp / azure-ctp are the sibling producers; the add-on modules match, but the

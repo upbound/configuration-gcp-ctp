@@ -1,10 +1,11 @@
 """04b-k8gb - k8gb operator + CoreDNS producer (see aws-ctp docs/gslb-dns-architecture.md).
 
 Installs the k8gb operator and its CoreDNS on the child GKE cluster, exposing
-CoreDNS via a single UDP-only GCP external L4 LoadBalancer pinned to one reserved
-regional static IP, and observes that Service so the XR can surface the k8gb
+CoreDNS via two GCP external L4 LoadBalancers on one reserved regional static IP
+(the chart's UDP Service and a composed TCP Service). The XR surfaces the k8gb
 status contract (nsName, glueAddresses, delegationRecord, coreDNSEndpoint) for
-the FleetGslb aggregator to consume.
+the FleetGslb aggregator: it observes the chart Service for coreDNSEndpoint;
+the glue comes from the reserved Address.
 
 - Chart pinned to v0.20.0, which ships both `k8gb.absa.oss/v1beta1` (via
   `installLegacyCrds: true`, the default) and the new `k8gb.io/v1beta1` `Gslb`
@@ -14,15 +15,20 @@ the FleetGslb aggregator to consume.
   FleetGslb writes the NS delegation, not per-child external-dns.
 - The Helm release name is pinned to `k8gb` (external-name) so its CoreDNS
   Service is `k8gb-coredns` in namespace `k8gb`, the name k8gb expects.
-- CoreDNS is forced to a single UDP-only Service (`coredns.servers[].zones[].use_tcp:
-  false`). A mixed TCP+UDP:53 Service is rejected by GKE's L4 LB before
-  v1.36.2-gke.1498000 (SyncLoadBalancerFailed), so the chart-default mixed Service
-  never provisions on GKE <= 1.34; UDP-only provisions on every GKE version and is
-  k8gb's canonical shape (no AXFR, small responses, so no TCP needed). The
-  `cloud.google.com/l4-rbs: enabled` annotation (backend-service RBS passthrough
-  NLB) is kept - it is compatible with a UDP-only Service and with a pinned
-  `loadBalancerIP`. No LB-controller add-on is needed; GKE provisions the LB
-  natively.
+- k8gb needs CoreDNS on UDP and TCP 53 (aws-ctp docs/gslb-dns-architecture.md
+  section 2). The chart-default mixed TCP+UDP:53 Service stayed pending
+  (SyncLoadBalancerFailed) on a GKE 1.34 cluster. GKE documents one
+  mixed-protocol Service from 1.34.1-gke.2190000 (GA 1.36.2-gke.1498000) with
+  the HttpLoadBalancing add-on and a backend-service-based LB (before 1.37 a
+  new Service must set
+  `loadBalancerClass: networking.gke.io/l4-regional-external`), and the XRD
+  still offers 1.32 and 1.33. So the chart Service is UDP-only
+  (`coredns.servers[].zones[].use_tcp: false`) and TCP:53 comes from a second,
+  TCP-only Service (`k8gb-coredns-tcp`) on the same reserved IP; GKE lets LB
+  Services share a static IP when protocol/port differ. Both carry
+  `cloud.google.com/l4-rbs: enabled` (backend-service RBS passthrough NLB),
+  which is compatible with a pinned `loadBalancerIP`. No in-cluster LB
+  controller is needed; GKE provisions the LBs natively.
 """
 
 from crossplane.function import resource
@@ -36,10 +42,10 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
     dns_zone = k8gb_param.get("dnsZone", "")
     parent_zone = k8gb_param.get("parentZone", "")
 
-    # One reserved regional external IP, pinned on the CoreDNS UDP LoadBalancer so
-    # its glue is a stable IPv4 A record. A GCP regional external L4 LB has a
-    # SINGLE IP, so exactly one Address (no per-subnet loop). This is a GCP MR
-    # (management creds via provider_config), unlike the child Helm Release.
+    # One reserved regional external IP, pinned on both CoreDNS LoadBalancers so
+    # its glue is a stable IPv4 A record. The two LBs share one IP, so exactly
+    # one Address (no per-subnet loop). This is a GCP MR (management creds via
+    # provider_config), unlike the child Helm Release.
     address_mr = {
         "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
         "kind": "Address",
@@ -65,9 +71,9 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
     stamp(address_mr, config)
     resource.update(rsp.desired.resources["k8gb-address"], address_mr)
 
-    # Hold the Release (which creates the LB) until the Address is reserved, so
-    # the LB is created once already bound to its static IP - changing
-    # loadBalancerIP on a live GKE LB forces a re-provision.
+    # Hold the Release and the TCP Service (which create the LBs) until the
+    # Address is reserved, so each LB is created once already bound to its
+    # static IP - changing loadBalancerIP on a live GKE LB forces a re-provision.
     address_ready = bool(address)
 
     values = {
@@ -88,11 +94,9 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
         "extdns": {"enabled": False},
         "coredns": {
             "serviceType": "LoadBalancer",
-            # UDP-only single Service. A mixed TCP+UDP:53 Service is rejected by
-            # GKE's L4 LB before v1.36.2 (SyncLoadBalancerFailed); UDP-only
-            # provisions on every GKE version and is k8gb's canonical shape (it
-            # needs no TCP - no AXFR, small responses). Reproduces the chart
-            # default servers block with use_tcp flipped to false.
+            # UDP-only chart Service (TCP:53 is the composed k8gb-coredns-tcp
+            # below). Reproduces the chart default servers block with use_tcp
+            # flipped to false; CoreDNS itself still listens on TCP 5353.
             "servers": [
                 {
                     "zones": [{"zone": ".", "use_tcp": False}],
@@ -156,6 +160,66 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
     if address_ready:
         stamp(release, config)
         resource.update(rsp.desired.resources["k8gb-release"], release)
+
+        # TCP-only Service on the same reserved IP as the chart's UDP Service.
+        # Ready once GKE binds the TCP LB to the reserved IP.
+        tcp_service = {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "metadata": {
+                "name": f"{id_val}-k8gb-coredns-tcp",
+                "namespace": config["namespace"],
+                "annotations": {
+                    "crossplane.io/composition-resource-name": "k8gb-coredns-tcp"
+                }
+            },
+            "spec": {
+                "forProvider": {
+                    "manifest": {
+                        "apiVersion": "v1",
+                        "kind": "Service",
+                        # No app.kubernetes.io/name=coredns label: k8gb v0.20.0
+                        # self-IP discovery takes the first Service with it.
+                        "metadata": {
+                            "name": "k8gb-coredns-tcp",
+                            "namespace": "k8gb",
+                            "annotations": {
+                                # Kept to match the chart Service's LB type.
+                                "cloud.google.com/l4-rbs": "enabled"
+                            }
+                        },
+                        "spec": {
+                            "type": "LoadBalancer",
+                            "loadBalancerIP": address,
+                            # Mirrors the chart's k8gb-coredns Service selector;
+                            # re-check on a chart bump.
+                            "selector": {
+                                "app.kubernetes.io/instance": "k8gb",
+                                "app.kubernetes.io/name": "coredns"
+                            },
+                            "ports": [
+                                {
+                                    "name": "tcp-53",
+                                    "protocol": "TCP",
+                                    "port": 53,
+                                    "targetPort": 5353
+                                }
+                            ]
+                        }
+                    }
+                },
+                "readiness": {
+                    "policy": "DeriveFromCelQuery",
+                    "celQuery": f'has(object.status.loadBalancer.ingress) && object.status.loadBalancer.ingress.exists(i, has(i.ip) && i.ip == "{address}")'
+                },
+                "providerConfigRef": {
+                    "name": id_val,
+                    "kind": "ProviderConfig"
+                }
+            }
+        }
+        stamp(tcp_service, config)
+        resource.update(rsp.desired.resources["k8gb-coredns-tcp"], tcp_service)
 
     # Observe-only Object on the child CoreDNS Service to read its LB endpoint.
     coredns_observe = {

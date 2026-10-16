@@ -157,10 +157,17 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
             f"{id_val}-k8gb-coredns",
             "k8gb CoreDNS observe Object must be removed before the GKE cluster is deleted",
             config)
+        # The TCP CoreDNS Service Object also guards the GKE cluster.
+        _emit_gke_usage(
+            rsp, id_val, "usage-k8gb-coredns-tcp-gke",
+            "kubernetes.m.crossplane.io/v1alpha1", "Object",
+            f"{id_val}-k8gb-coredns-tcp",
+            "k8gb CoreDNS TCP Service Object must be removed before the GKE cluster is deleted",
+            config)
         # The CoreDNS reserved Address must outlive the k8gb Release: releasing
         # the static IP while the live LB still uses it fails. of: Address,
-        # by: Release. Exactly one Address per control plane (single regional
-        # external LB IP), so no loop.
+        # by: Release. Exactly one Address per control plane (both CoreDNS LBs
+        # share one regional IP), so no loop.
         usage_address = {
             "apiVersion": "protection.crossplane.io/v1beta1",
             "kind": "Usage",
@@ -191,6 +198,37 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
         }
         stamp(usage_address, config)
         resource.update(rsp.desired.resources["usage-k8gb-address-release"], usage_address)
+
+        usage_address_tcp = {
+            "apiVersion": "protection.crossplane.io/v1beta1",
+            "kind": "Usage",
+            "metadata": {
+                "name": f"{id_val}-usage-k8gb-address-coredns-tcp",
+                "namespace": config["namespace"],
+                "annotations": {
+                    "crossplane.io/composition-resource-name": "usage-k8gb-address-coredns-tcp"
+                }
+            },
+            "spec": {
+                "of": {
+                    "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+                    "kind": "Address",
+                    "resourceRef": {
+                        "name": f"{id_val}-k8gb-address",
+                        "namespace": config["namespace"]
+                    }
+                },
+                "by": {
+                    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                    "kind": "Object",
+                    "resourceRef": {"name": f"{id_val}-k8gb-coredns-tcp"}
+                },
+                "reason": "CoreDNS reserved Address must be released only after the TCP CoreDNS Service (and its LB) is gone",
+                "replayDeletion": True
+            }
+        }
+        stamp(usage_address_tcp, config)
+        resource.update(rsp.desired.resources["usage-k8gb-address-coredns-tcp"], usage_address_tcp)
 
     if argocd_enabled:
         _emit_gke_usage(
