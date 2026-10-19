@@ -180,8 +180,9 @@ spec:
                     type: object
                     description: >-
                       Enable k8gb (Kubernetes Global Balancer) for health-aware, DNS-based global
-                      failover. Installs the k8gb operator and CoreDNS exposed via a native GCP
-                      external LB, and provisions an Envoy Gateway data plane. See docs/ctp-addons-implementation-plan.md.
+                      failover. Installs the k8gb operator and CoreDNS exposed via two native GCP
+                      external LBs (UDP and TCP 53) on one reserved IP, and provisions an Envoy
+                      Gateway data plane. See docs/ctp-addons-implementation-plan.md.
                     properties:
                       enabled:
                         type: string
@@ -357,6 +358,22 @@ spec:
                           from machineType when a change was attempted — see the
                           NodePoolMachineTypeImmutable condition for remediation guidance.
                         type: string
+                  license:
+                    description: >-
+                      The license this ControlPlane installs. ControlPlanes sharing its Secret treat it
+                      as the holder - see the LicenseConflict condition.
+                    type: object
+                    properties:
+                      secretRef:
+                        description: The Secret the installed license is copied from.
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the Secret holding the installed license JSON.
+                          namespace:
+                            type: string
+                            description: Namespace of the Secret.
             type: object
         required:
         - spec

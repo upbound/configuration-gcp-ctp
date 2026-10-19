@@ -12,8 +12,7 @@ appears.
 - The GatewayClass `eg` points at an EnvoyProxy CR whose data-plane Service is a
   plain `type: LoadBalancer`; GKE provisions an external passthrough Network LB
   natively (no LB-controller add-on is needed, unlike the AWS sibling). The
-  HTTP(S) plane is single-protocol TCP, so it needs neither the k8gb CoreDNS
-  mixed-protocol RBS annotation nor an AWS-style NLB annotation block.
+  HTTP(S) plane is single-protocol TCP; no annotations.
 - The EnvoyProxy + GatewayClass Objects wait on the release being deployed so the
   CRDs exist first (same pattern as the argocd app / knative CR gates).
 """
@@ -93,9 +92,7 @@ def add_gateway_resources(rsp, id_val, gateway_ready, config):
                 "type": "Kubernetes",
                 "kubernetes": {
                     # Plain LoadBalancer -> GKE external passthrough Network LB.
-                    # No annotations: the plane is single-protocol TCP (80/443),
-                    # so it needs neither the CoreDNS mixed-protocol RBS
-                    # annotation nor an AWS-style NLB annotation block.
+                    # Single-protocol TCP (80/443); no annotations.
                     "envoyService": {"type": "LoadBalancer"}
                 }
             }

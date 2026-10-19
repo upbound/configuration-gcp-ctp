@@ -2,7 +2,7 @@
 
 Spins up a real GKE cluster via the composition and exercises the whole stack in
 one run: UXP + GKE Workload-Identity backup (GCS) + the k8gb producer (operator +
-CoreDNS via a native GCP external Network LB) + ArgoCD (UI Gateway/HTTPRoute +
+CoreDNS via native GCP external Network LBs) + ArgoCD (UI Gateway/HTTPRoute +
 app-of-apps), which also pulls in cert-manager (always-on) and the Envoy Gateway
 data plane.
 
@@ -30,9 +30,11 @@ delegation yet (FleetGslb is a separate workstream). No license is supplied; the
 backup wiring and add-ons need none (executing a real backup needs a UXP
 Standard+ license, which this test does not trigger).
 
-The k8gb CoreDNS LB is a backend-service (RBS) external passthrough NLB serving
-TCP+UDP:53 - it needs GKE >= 1.26 (satisfied by version "1.34" below). Requires
-GCP quota for a two-node e2-standard-2 GKE cluster in us-central1, a
+The k8gb CoreDNS LBs are backend-service (RBS) external passthrough NLBs on one
+reserved IP: UDP:53 from the chart Service, TCP:53 from k8gb-coredns-tcp, which is
+Ready only once GKE binds it to that IP.
+
+Requires GCP quota for a two-node e2-standard-2 GKE cluster in us-central1, a
 globally-unique GCS bucket name, plus the add-on load balancers. Expected runtime:
 40-70 minutes.
 """

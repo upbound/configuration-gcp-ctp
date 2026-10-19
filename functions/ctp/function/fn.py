@@ -105,10 +105,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     argocd_enabled = bool(argocd) and argocd.get("enabled") == "yes"
 
     # Every ControlPlane in every namespace; Crossplane fetches them and re-runs
-    # the function. MatchLabels is set explicitly: require_resources drops an
-    # empty one, leaving the selector with no match criterion.
-    rsp.requirements.resources["allControlPlanes"].CopyFrom(fnv1.ResourceSelector(
-        api_version=xr["apiVersion"], kind=xr["kind"], match_labels=fnv1.MatchLabels()))
+    # the function, so only the license guard and k8gb peer discovery ask.
+    # MatchLabels is set explicitly: require_resources drops an empty one,
+    # leaving the selector with no match criterion.
+    if license_param or k8gb_enabled:
+        rsp.requirements.resources["allControlPlanes"].CopyFrom(fnv1.ResourceSelector(
+            api_version=xr["apiVersion"], kind=xr["kind"], match_labels=fnv1.MatchLabels()))
     all_ctps = request.get_required_resources(req, "allControlPlanes")
 
     license_conflict = check_license_conflict(xr, license_param, all_ctps)
@@ -179,7 +181,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if k8gb_enabled or argocd_enabled:
         add_gateway_resources(rsp, id_val, gateway_ready, config)
 
-    # k8gb producer - operator + CoreDNS exposed via a native GCP external LB.
+    # k8gb producer - operator + CoreDNS exposed via two native GCP external LBs
+    # (UDP + TCP) on one reserved IP.
     if k8gb_enabled:
         add_k8gb_resources(rsp, id_val, k8gb, k8gb_geo_tag, k8gb_ext_geo_tags,
                            k8gb_deployed, location, provider_config,
@@ -199,10 +202,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                                         observed_resources, install_from, config)
 
     # On conflict, keep a license already installed, from the Secret it was
-    # installed from; only a new claim is withheld.
+    # installed from; only a new claim is withheld. The composed license is
+    # written to status as this XR's claim.
     installed_license = get_installed_license(observed_resources) if license_conflict else None
+    license_claim = None
     if license_param and (not license_conflict or installed_license):
-        add_license_resources(rsp, id_val, installed_license or license_param, config)
+        license_claim = installed_license or license_param
+        add_license_resources(rsp, id_val, license_claim, config)
 
     if vpa and vpa.get("enabled") == "yes" and features_licensed:
         add_vpa_resources(rsp, id_val, vpa, vpa_ready, config)
@@ -220,7 +226,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  sa_email, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_machine_type, ng_size_mismatch, vpa, knative,
-                 k8gb, k8gb_geo_tag, k8gb_address, license_conflict, config)
+                 k8gb, k8gb_geo_tag, k8gb_address, license_conflict,
+                 license_claim, config)
 
 
 class FunctionRunner(grpcv1.FunctionRunnerService):
